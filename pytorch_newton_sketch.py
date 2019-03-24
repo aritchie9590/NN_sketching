@@ -53,7 +53,7 @@ def main(args):
 
     model = Model(input_size=784)
 
-    #TODO: Our optimizer comes a second-order method
+    #TODO: Our optimizer comes from a second-order method
     reg = 10/60000 #from the matlab version, lambda is 10/m
     optimizer = torch.optim.SGD(model.parameters(), lr=1e-2, weight_decay=reg) 
 
