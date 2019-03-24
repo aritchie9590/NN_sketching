@@ -130,11 +130,11 @@ X_train = X_train / np.max(X_train)
 lam = 10 / n
 
 
-# Define single-layer sigmoid-activated network
-def f(w, X):
-    z = X @ w
-    a = 1 / (1 + ap.exp(-z))
-    return a
+# # Define single-layer sigmoid-activated network
+# def f(w, X):
+#     z = X @ w
+#     a = 1 / (1 + ap.exp(-z))
+#     return a
 
 
 def fc_forward(x, w, b=None):
@@ -152,25 +152,23 @@ def relu(z):
     return out
 
 
-#Define one-layer network
-input_dim = X.shape[1]
-params = {
-    "L1": [input_dim,1],
-}
-
-
-# # Define two-layer network parameters
+# #Define one-layer network
 # input_dim = X.shape[1]
-# hidden_dim = 200
-# output_dim = 1
-#
 # params = {
-#     "L1": [input_dim, hidden_dim],
-#     "L2": [hidden_dim, output_dim]
+#     "L1": [input_dim,1],
 # }
 
 
-# Two-layer sigmoid-activated network
+# Define two-layer network parameters
+input_dim = X.shape[1]
+hidden_dim = 200
+output_dim = 1
+
+params = {
+    "L1": [input_dim, hidden_dim],
+    "L2": [hidden_dim, output_dim]
+}
+
 def f2(w, X, params):
     idx = 0
     a = X.copy()
