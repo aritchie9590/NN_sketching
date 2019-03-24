@@ -11,6 +11,7 @@
 2. [Fast Curvature Matrix-Vector Products for Second-Order Gradient Descent](http://citeseerx.ist.psu.edu/viewdoc/download;jsessionid=0258AD1C6C96F0DC0BCB0F456F5BCF88?doi=10.1.1.421.1443&rep=rep1&type=pdf) N. N. Schraudolph, Neural Computation 2002
 3. [Practical Gauss-Newton Optimisation for Deep Learning](https://arxiv.org/pdf/1706.03662.pdf) A. Botev, H. Ritter, D. Barber, ICML 2017
 4. [Deep learning via Hessian-free optimization](http://www.cs.toronto.edu/~jmartens/docs/Deep_HessianFree.pdf) J. Martens, ICML 2010
+5. [First-and second-order methods for learning: between steepest descent and Newton's method.](https://www-mitpressjournals-org.proxy.lib.umich.edu/doi/pdf/10.1162/neco.1992.4.2.141) R. Battiti, Neural Computation 1992
 
 ### Weblinks
 
