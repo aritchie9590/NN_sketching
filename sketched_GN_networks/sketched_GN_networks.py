@@ -32,9 +32,10 @@ def solver(data, f, lam, w0, loss_type, ITERNEWTON, n_cgiter=None, GN=True, iter
     X_val = data['X_val']
     y_val = data['y_val']
 
+
     max_backtrack = 50
-    backtrack_alpha = 0.2
-    backtrack_beta = 0.5
+    backtrack_alpha = 0.1
+    backtrack_beta = 0.9
     NTOL = 1e-8
 
     w = w0.copy()
@@ -53,6 +54,11 @@ def solver(data, f, lam, w0, loss_type, ITERNEWTON, n_cgiter=None, GN=True, iter
         val_err[0] = np.sum(abs(np.argmax(softmax(f(w, X_val)), axis=1) - np.argmax(y_val, axis=1)) > 0,
                             axis=0) / y_val.shape[0]
 
+    randperm = lambda n: np.random.permutation(n)
+    randp = np.hstack((randperm(n), randperm(n), randperm(n), randperm(n), randperm(n), randperm(n), randperm(n), \
+            randperm(n),
+             randperm(n), randperm(n), randperm(n), randperm(n)))
+
     start = time.time()
     for iter in range(0, ITERNEWTON):
 
@@ -60,13 +66,14 @@ def solver(data, f, lam, w0, loss_type, ITERNEWTON, n_cgiter=None, GN=True, iter
         if (sketch_size is None):
             sketch_size = X_train.shape[0]
 
-        sample_idx = np.random.permutation(n)[:sketch_size]
+        # sample_idx = np.random.permutation(n)[:sketch_size]
+        sample_idx = randp[sketch_size * (iter) + 1: sketch_size * (iter + 1) + 1]
         Xs = X_train[sample_idx, :]
 
         if (GN): #Gauss-Newton algorithms
 
             if(iterative): #Iterative GN sketch
-                vjp = make_vjp(f)(w, X_train, params)[0]
+                vjp = make_vjp(f)(w, X_train)[0]
 
                 if(loss_type is 'l2'): #Regression
                     e = f(w, X_train) - y_train
@@ -118,10 +125,11 @@ def solver(data, f, lam, w0, loss_type, ITERNEWTON, n_cgiter=None, GN=True, iter
             beta = backtrack_beta
 
             if(loss_type is 'l2'):
-                fxn_val = lambda v: 0.5*np.linalg.norm(f(w - t*dw,X_train) - y)**2/n + lam * np.linalg.norm(w - t * dw) ** 2 / 2
+                fxn_val = lambda v: 0.5*np.linalg.norm(f(w - t*dw,X_train) - y_train)**2/n + lam * np.linalg.norm(w -
+                                                                                                                 t * dw) ** 2 / 2
             else:
                 fxn_val = lambda v: 0.5 * np.linalg.norm(
-                    softmax(f(w - t * dw, X_train)) - y) ** 2 / n + lam * np.linalg.norm(w - t * dw) ** 2 / 2
+                    softmax(f(w - t * dw, X_train)) - y_train) ** 2 / n + lam * np.linalg.norm(w - t * dw) ** 2 / 2
 
             while (fxn_val(w - t*dw) > val + alpha * t * fprime):
                 t = beta * t
@@ -133,7 +141,7 @@ def solver(data, f, lam, w0, loss_type, ITERNEWTON, n_cgiter=None, GN=True, iter
             if(GN):
                 t = 1 / (iter + 1)
             else:
-                t = 1000 / (iter + 1)
+                t = 3000 / (iter + 1)
 
         # Update the NN params
         w = w - t * dw
@@ -298,7 +306,7 @@ ITER_GNS = 10
 ITER_SGD = 50
 n_cg_iter = 5
 
-lam = 0.0001    #Use for softmax
+lam = 0.0001
 # lam = 10 / data['X_train'].shape[0] #use for l2 regression
 
 # Gauss-Newton
