@@ -1,8 +1,7 @@
 import numpy as np
 
-def nn_cgm(ggnvp,b,x0,lam,niters,record=False):
+def nn_cgm(ggnvp,b,x0,niters,record=False):
 
-    m = 60000
     cost = lambda v:  0.5*v.T @ (ggnvp(v)) - b.T@v
 
     cost_log = np.zeros(niters)
