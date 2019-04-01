@@ -271,6 +271,8 @@ for iter = 1:ITERMAX
     cost4(iter+1) = norm(s(Amat*x)-y)^2/m+lambda*norm(x)^2;
     %grad2(iter) = norm(Amat'*diag(abs(Amat*x).^2-y)*Amat*x);
     errtest4(iter+1) = sum(abs(round(s(Atest*x))-ytest))/length(ytest);
+    
+    mu = mu / sqrt(iter); %added 
 
 end
 timeSketch_iterative = toc
