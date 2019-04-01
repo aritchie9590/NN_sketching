@@ -266,7 +266,7 @@ for iter = 1:ITERMAX
     CGTOl = 1e-8;
 
     [v, cgsflag, cgsrelres] = cgs(@(x) DA'*(DA*x)/m+lambda*x,grad,CGTOL,CGITER,[],[],[]);
-    x = x-mu*v;
+    x = x-mu / iter*v;
     %err2(iter) = min(norm(x-x0)^2,norm(x+x0)^2);
     cost4(iter+1) = norm(s(Amat*x)-y)^2/m+lambda*norm(x)^2;
     %grad2(iter) = norm(Amat'*diag(abs(Amat*x).^2-y)*Amat*x);
