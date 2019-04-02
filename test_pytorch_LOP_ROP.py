@@ -3,6 +3,48 @@ import numpy
 import torch
 import torch.nn as nn 
 
+A = torch.randn((3,3))
+x = torch.randn((3,1))
+x.requires_grad = True
+
+#Computing a vector-Jacobian product (LOP)
+f = torch.mm(A,x)
+
+v = torch.randn(f.shape)
+vJ, = torch.autograd.grad(f, x, v)
+print('Expected: {}'.format(v.transpose(0,1)@A))
+print('Computed: v.T * J: {}'.format(vJ))
+
+#Computing a Jacobian-vector product (ROP) - using vjp trick
+f = torch.mm(A,x)
+
+u = torch.randn(f.shape)
+u.requires_grad = True 
+uJ, = torch.autograd.grad(f, x, u, create_graph=True)
+
+v = torch.ones(x.shape)
+Jv, = torch.autograd.grad(uJ, u, v)
+print('Expected: {}'.format(A@v))
+print('J * v: {}'.format(Jv))
+
+#Computing the Gauss-Newton-vector product 
+f = torch.mm(A,x)
+
+u = torch.ones(f.shape)
+u.requires_grad = True 
+
+uJ, = torch.autograd.grad(f, x, u, create_graph=True)
+
+v = torch.randn(x.shape)
+v.requires_grad = True
+Jv, = torch.autograd.grad(uJ, u, v, create_graph=True)
+
+JtJv, = torch.autograd.grad(Jv, v, Jv)
+print('Expected: {}'.format(A.transpose(0,1)@A@v))
+print('JtJv: {}'.format(JtJv))
+
+'''
+#Using PyTorch NN Layers
 batch_size = 1 
 input_dim = 12
 sketch_dim = int(input_dim/2)
@@ -17,18 +59,7 @@ sig = nn.Sigmoid() #linear activation
 #forward pass
 y_hat = sig(w(x))
 res = y_hat - y #residual
-
-#Computing a vector-Jacobian product (LOP)
-v = torch.randn((batch_size,output_dim))
-v.requires_grad = True 
-
-vJ, = torch.autograd.grad(res, x, v, create_graph=True)
-print('v.T * J: {}  \n{}'.format(vJ, vJ.shape))
-
-#Computing a Jacobian-vector product (ROP) - using vjp trick
-u = torch.ones((batch_size,input_dim))
-Ju, = torch.autograd.grad(vJ, v, u)
-print('J * u: {} \n{}'.format(Ju, Ju.shape))
+'''
 
 '''
 #Now with sketching matrix
