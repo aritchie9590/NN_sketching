@@ -8,31 +8,47 @@ import torchvision.datasets as datasets
 import torchvision.transforms as transforms
 from torch.utils.data import DataLoader
 
+from GN_Solver import GN_Solver
+
 parser = argparse.ArgumentParser()
 
 #settings
 parser.add_argument('--dataset', default='mnist', type=str, help='dataset(s) to use')
 default_datasets = ['mnist']
-parser.add_argument('--num_epochs', default=10, type=int, help='num of epochs to train')
+parser.add_argument('--two_layer', action='store_true', help='add parameter to use two-layer architecture instead of single-layer')
+parser.add_argument('--num_epochs', default=1, type=int, help='num of epochs to train')
 parser.add_argument('--batch_size', default=60000, type=int, help='batch size, 60,000 assumes all training data') 
 
 parser.add_argument('--cuda', action='store_true', help='use gpu')
 
 parser.set_defaults(cuda=False)
+parser.set_defaults(two_layer=False)
 args = parser.parse_args()
 
 #simple feed-forward neural network
 class Model(nn.Module):
     
-    def __init__(self, input_size=784):
+    def __init__(self, input_size=784, hidden_dim=200, output_dim=1, two_layer=False):
         super().__init__()
 
-        self.fc_layer = nn.Linear(input_size, 1)
-        self.activation = nn.Sigmoid()
+        self.single_layer = nn.Sequential(
+                            nn.Linear(input_size, 1, bias=False),
+                            nn.Sigmoid())
+
+        '''
+        self.two_layer = nn.Sequential(
+                         nn.Linear(input_size, hidden_dim),
+                         nn.Sigmoid(), #Or ReLU()
+                         nn.Linear(hidden_dim, 1),
+                         nn.Sigmoid())
+        '''
+        self.two_layer = None 
+
+        #Set-up feed-forward network as two layer or single layer
+        self.ff_network = self.two_layer if two_layer else self.single_layer 
 
     def forward(self, x):
-        h = self.fc_layer(x)
-        out = self.activation(h)
+        out = self.ff_network(x)
 
         return out
 
@@ -51,16 +67,21 @@ def get_dataloader(args):
 def main(args):
     train_dataloader, test_dataloader = get_dataloader(args)
 
-    model = Model(input_size=784)
+    model = Model(input_size=784, two_layer=args.two_layer)
 
-    #TODO: Our optimizer comes from a second-order method
-    reg = 10/60000 #from the matlab version, lambda is 10/m
+    '''
+    n = len(train_dataloader)
+    reg = 10/n #from the matlab version, lambda is 10/m
     optimizer = torch.optim.SGD(model.parameters(), lr=1e-2, weight_decay=reg) 
+    '''
+
+    #import pdb; pdb.set_trace()
+    optimizer = GN_Solver(model.parameters())
 
     for epoch in range(args.num_epochs):
         loss, accuracy = train(epoch, model, train_dataloader, optimizer)
         print('Epoch: {}, Loss: {}, Accuracy: {}'.format(epoch, loss.item(), accuracy.item()))
-
+    
     loss, accuracy = test(model, test_dataloader)
     print('Test Loss: {}, Accuracy: {}'.format(loss, accuracy))
 
@@ -73,22 +94,33 @@ def train(epoch, model, dataloader, optimizer):
    accuracy = []
    
    for idx, data in enumerate(dataloader):
-       images, labels = data
-       labels = (labels == 0).float() #transform to binary classification between 0 and non-zero
-       
-       optimizer.zero_grad()
+       images, gt_labels = data
+       labels = (gt_labels == 0).float() #transform to binary classification between 0 and non-zero
        images = images.view(-1, 28*28*1) #reshape image to vector
+       images.requires_grad = True 
 
-       pred = model(images).squeeze(1)
+       if labels.item() == 1:
+           continue
        
-       loss = criterion(pred, labels)
-       loss.backward()
-       optimizer.step()
+       print('Labels: {}, True Labels: {}'.format(labels, gt_labels))
+       #Custom function b/c conjuage gradient needs to re-evaluate the function multiple times
+       def closure():
+           optimizer.zero_grad()
+           pred = model(images).squeeze(1)
+           
+           loss = criterion(pred, labels)
+           loss.backward(retain_graph=True) #TODO: May have to subtract gradient manually so they don't accumulate
+
+           err = pred - labels 
+           return images, err, pred
+       
+       loss, pred = optimizer.step(closure)
 
        losses.append(loss.item())
        acc = torch.sum((pred>0.5).float() == labels).float()/len(labels)
        accuracy.append(acc.item())
-   
+       print('Epoch: {}, Iter: {}, Loss: {}'.format(epoch, idx, loss.item()))
+
    return np.mean(losses), np.mean(accuracy)
 
 #forward testing pass
