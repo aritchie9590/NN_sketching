@@ -43,24 +43,31 @@ JtJv, = torch.autograd.grad(Jv, v, Jv)
 print('Expected: {}'.format(A.transpose(0,1)@A@v))
 print('JtJv: {}'.format(JtJv))
 
-'''
-#Using PyTorch NN Layers
-batch_size = 1 
-input_dim = 12
-sketch_dim = int(input_dim/2)
-output_dim = 1
+#Using NN Layers
+n = 9 #mini-batch size
+d = 784 #input dimension
+o = 1 #output dimension
+sketch_dim = int(d/2)
 
-x = torch.randn((batch_size, input_dim), requires_grad=True)
-y = torch.ones((batch_size, output_dim))
+X = torch.randn((n,d))
+W = torch.randn((d,o))
+Y = torch.ones((n, o))
 
-w = nn.Linear(input_dim, output_dim) #weight matrix
-sig = nn.Sigmoid() #linear activation
+W.requires_grad = True
 
-#forward pass
-y_hat = sig(w(x))
-res = y_hat - y #residual
-'''
+f = torch.mm(X,W)
+#sig = nn.Sigmoid() #linear activation
 
+u = torch.ones(f.shape)
+u.requires_grad = True 
+
+uJ, = torch.autograd.grad(f, W, u, create_graph=True)
+
+v = torch.randn((d,1))
+v.requires_grad = True
+Jv, = torch.autograd.grad(uJ, u, v, create_graph=True)
+
+JtJv, = torch.autograd.grad(Jv, v, Jv)
 '''
 #Now with sketching matrix
 S = torch.randn((sketch_dim, batch_size))

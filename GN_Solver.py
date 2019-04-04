@@ -9,14 +9,14 @@ from torch.optim.optimizer import Optimizer
 Compute Gauss-Newton vector product
 Args:
     f: output from cost function
-    x: take derivative w.r.t to these parameters
+    w: take derivative w.r.t to parameters of network
     v: vector multiply with Gauss-Newton approx
 """
-def _make_ggnvp(f, x, v=None):
+def _make_ggnvp(f, w, v=None):
     u = torch.ones(f.shape)
     u.requires_grad = True
 
-    uJ, = torch.autograd.grad(f,x,u, create_graph=True) #gradient
+    uJ, = torch.autograd.grad(f,w,u, create_graph=True) #gradient
     
     def ggnvp(v):
         assert v.requires_grad, 'variable must have requires_grad as True'
@@ -26,18 +26,15 @@ def _make_ggnvp(f, x, v=None):
 
         return JtJv
 
-    return ggnvp 
+    return uJ, ggnvp 
 
 #solve for optimal step direction using the Conjugate Gradient Descent method
 def _conjugate_gradient(ggnvp, grad, w0, max_iters):
     n_iter = 0
 
-    #TODO: Fiddle with these operations so they use Torch functions
     cost = lambda v: 0.5*v.transpose(0,1) @ (ggnvp(v)) - grad.transpose(0,1)@v
 
-    w0.unsqueeze_(0)
     w = w0.clone()
-    w.requires_grad = True
     r = grad - ggnvp(w)
     p = r
 
@@ -48,9 +45,9 @@ def _conjugate_gradient(ggnvp, grad, w0, max_iters):
         Ap = ggnvp(p)
         alpha = rs_old / (Ap @ p.transpose(0,1)) #find optimal step size
 
-        w = torch.add(w, alpha.item(), p) #update parameters
+        w.add_(alpha.item(), p) #update parameters
 
-        r = torch.sub(r, alpha.item(), Ap)
+        r.sub_(alpha.item(), Ap)
         rs_new = r @ r.transpose(0,1)
 
         if torch.sqrt(rs_new) < 1e-10:
@@ -111,21 +108,21 @@ class GN_Solver(Optimizer):
             if p.grad is None:
                 view = p.data.new(p.data.numel()).zero_()
             elif p.grad.data.is_sparse:
-                d_p = p.grad.data.to_dense()
-                d_p.add(reg, p.data)
+                d_p = p.grad.to_dense()
+                d_p.add(reg, p)
                 view = d_p.view(-1)
             else:
-                d_p = p.grad.data 
-                d_p.add_(reg, p.data)
+                d_p = p.grad 
+                d_p.add_(reg, p)
                 view = d_p.view(-1)
             
-            views_data.append(p.data.view(-1))
+            views_data.append(p.view(-1))
             views.append(view)
 
         return torch.cat(views_data,0), torch.cat(views, 0)
     
     #update the model weights
-    def _add_grad(self, step_size, reg, update):
+    def _add_grad(self, step_size, update):
         offset = 0
         for p in self._params:
             numel = p.numel()
@@ -142,7 +139,8 @@ class GN_Solver(Optimizer):
                 and returns the loss
         """
         
-        x,orig_loss,pred = closure()
+        #import pdb; pdb.set_trace()
+        orig_loss,err,pred = closure()
         loss = orig_loss
 
         group = self.param_groups[0]
@@ -155,17 +153,18 @@ class GN_Solver(Optimizer):
 
         state = self.state[self._params[0]]
         
-        w0, grad = self._gather_flat_grad(reg)
-
+        #TODO: Figure out how to use all network parameters for >1 layer
+        #w0, grad = self._gather_flat_grad(reg)
+        w0 = self._params[0]
+        
         #Compute Gauss-Newton vector product 
-        ggnvp = _make_ggnvp(loss,x)
-
+        grad, ggnvp = _make_ggnvp(err,w0) 
         #Solve for the Conjugate Gradient Direction
         dw = _conjugate_gradient(ggnvp, grad, w0, max_iter)
 
         #Perform backtracking line search
         val = loss + 0.5 * reg * torch.norm(w0)
-        fprime = dw @ grad
+        fprime = dw @ grad.transpose(0,1)
         
         t = lr 
         if backtrack > 0:
@@ -180,6 +179,6 @@ class GN_Solver(Optimizer):
                     break 
 
         #Update the model parameters
-        self._add_grad(-t, reg, dw)
+        self._add_grad(-t, dw)
 
         return val, pred

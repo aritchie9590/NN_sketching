@@ -16,8 +16,9 @@ parser = argparse.ArgumentParser()
 parser.add_argument('--dataset', default='mnist', type=str, help='dataset(s) to use')
 default_datasets = ['mnist']
 parser.add_argument('--two_layer', action='store_true', help='add parameter to use two-layer architecture instead of single-layer')
-parser.add_argument('--num_epochs', default=1, type=int, help='num of epochs to train')
-parser.add_argument('--batch_size', default=60000, type=int, help='batch size, 60,000 assumes all training data') 
+parser.add_argument('--num_epochs', default=10, type=int, help='num of epochs to train')
+parser.add_argument('--batch_size', default=60000, type=int, help='mini-batch size') 
+parser.add_argument('--reg', default=0.0001, type=float, help='regularizer')
 
 parser.add_argument('--cuda', action='store_true', help='use gpu')
 
@@ -76,7 +77,7 @@ def main(args):
     '''
 
     #import pdb; pdb.set_trace()
-    optimizer = GN_Solver(model.parameters())
+    optimizer = GN_Solver(model.parameters(), reg=args.reg)
 
     for epoch in range(args.num_epochs):
         loss, accuracy = train(epoch, model, train_dataloader, optimizer)
@@ -97,29 +98,23 @@ def train(epoch, model, dataloader, optimizer):
        images, gt_labels = data
        labels = (gt_labels == 0).float() #transform to binary classification between 0 and non-zero
        images = images.view(-1, 28*28*1) #reshape image to vector
-       images.requires_grad = True 
 
-       if labels.item() == 1:
-           continue
-       
-       print('Labels: {}, True Labels: {}'.format(labels, gt_labels))
        #Custom function b/c conjuage gradient needs to re-evaluate the function multiple times
        def closure():
            optimizer.zero_grad()
-           pred = model(images).squeeze(1)
+           pred = model(images)
            
            loss = criterion(pred, labels)
-           loss.backward(retain_graph=True) #TODO: May have to subtract gradient manually so they don't accumulate
+           #loss.backward(retain_graph=True, create_graph=True) #TODO: May have to subtract gradient manually so they don't accumulate
 
-           err = pred - labels 
-           return images, err, pred
+           err = pred - labels.unsqueeze(1) 
+           return loss, err, pred
        
        loss, pred = optimizer.step(closure)
 
        losses.append(loss.item())
-       acc = torch.sum((pred>0.5).float() == labels).float()/len(labels)
+       acc = torch.sum((pred.squeeze(1)>0.5).float() == labels).float()/len(labels)
        accuracy.append(acc.item())
-       print('Epoch: {}, Iter: {}, Loss: {}'.format(epoch, idx, loss.item()))
 
    return np.mean(losses), np.mean(accuracy)
 
