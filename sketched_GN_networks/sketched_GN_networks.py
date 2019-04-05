@@ -287,11 +287,13 @@ def make_model(input_dim,output_dim,loss_type,hidden_dim = None,seed=None):
 ### Gauss-Newton Solver ###
 
 loss_type = 'l2'
+# loss_type = 'softmax'
 data = read_data(loss_type,seed=0)
 sketch_size = 784
 
 input_dim = data['X_train'].shape[1]
-hidden_dim = None
+hidden_dim = None         ## Use for regression
+# hidden_dim = 15             ## Use for softmax
 
 if(loss_type is 'l2'):
     output_dim = 1
@@ -305,8 +307,8 @@ ITER_GNS = 10
 ITER_SGD = 50
 n_cg_iter = 5
 
-# lam = 0.0001
-lam = 10 / data['X_train'].shape[0] #use for l2 regression
+# lam = 0.0001          ## Use for softmax
+lam = 10 / data['X_train'].shape[0] ## use for l2 regression
 
 # Gauss-Newton
 # w_star_gn, loss_log, t_solve = solver(data, model, lam, w0, ITER_GN, n_cg_iter)
