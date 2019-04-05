@@ -32,10 +32,9 @@ def solver(data, f, lam, w0, loss_type, ITERNEWTON, n_cgiter=None, GN=True, iter
     X_val = data['X_val']
     y_val = data['y_val']
 
-
     max_backtrack = 50
-    backtrack_alpha = 0.1
-    backtrack_beta = 0.9
+    backtrack_alpha = 0.2
+    backtrack_beta = 0.5
     NTOL = 1e-8
 
     w = w0.copy()
@@ -287,12 +286,12 @@ def make_model(input_dim,output_dim,loss_type,hidden_dim = None,seed=None):
 
 ### Gauss-Newton Solver ###
 
-loss_type = 'softmax'
+loss_type = 'l2'
 data = read_data(loss_type,seed=0)
 sketch_size = 784
 
 input_dim = data['X_train'].shape[1]
-hidden_dim = 15
+hidden_dim = None
 
 if(loss_type is 'l2'):
     output_dim = 1
@@ -306,8 +305,8 @@ ITER_GNS = 10
 ITER_SGD = 50
 n_cg_iter = 5
 
-lam = 0.0001
-# lam = 10 / data['X_train'].shape[0] #use for l2 regression
+# lam = 0.0001
+lam = 10 / data['X_train'].shape[0] #use for l2 regression
 
 # Gauss-Newton
 # w_star_gn, loss_log, t_solve = solver(data, model, lam, w0, ITER_GN, n_cg_iter)
@@ -341,7 +340,6 @@ w_star_sgd, loss_log_sgd, val_err_sgd, t_solve_sgd = solver(data, model, lam, w0
 
 plt.subplot(2,1,1)
 plt.semilogy(np.arange(len(loss_log_sketch)), loss_log_sketch, 'g',np.arange(len(loss_log_sgd)), loss_log_sgd, 'b')
-plt.xlabel('Iteration')
 plt.title('Training loss')
 plt.grid(True, which='both')
 plt.legend(['Gauss-Newton-Sketch', 'SGD'])
@@ -366,7 +364,6 @@ plt.show()
 plt.subplot(2,1,1)
 plt.semilogy(np.arange(len(loss_log_sketch)) * t_solve_sketch / ITER_GNS, loss_log_sketch, 'g', np.arange(len(
     loss_log_sgd)) * t_solve_sgd / ITER_SGD, loss_log_sgd, 'b')
-plt.xlabel('Seconds')
 plt.title('Training loss')
 plt.grid(True, which='both')
 plt.legend(['Gauss-Newton-Sketch', 'SGD'])
