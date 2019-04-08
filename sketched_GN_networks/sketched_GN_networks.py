@@ -86,7 +86,7 @@ def solver(data, f, lam, w0, loss_type, ITERNEWTON, n_cgiter=None, GN=True, iter
                 else:    #Softmax
                     e = softmax(f(w, Xs)) - y_train[sample_idx]
 
-            vjp_s = make_vjp(f)(w, Xs)[0]
+            vjp_sketch = make_vjp(f)(w, Xs)[0]
 
             loss = 0.5 * np.linalg.norm(e) ** 2 / n  # compute loss
 
@@ -95,7 +95,7 @@ def solver(data, f, lam, w0, loss_type, ITERNEWTON, n_cgiter=None, GN=True, iter
             # ggnvp_fxn = lambda v: ggnvp(v) / n + lam * v  # Make Gauss-Newton-vector product function
 
             jvp_sketch = make_jvp(f)(w, Xs)
-            ggnvp_fxn = lambda v: vjp_s(jvp_sketch(v)[1]) / n + lam * v
+            ggnvp_fxn = lambda v: vjp_sketch(jvp_sketch(v)[1]) / n + lam * v
 
             # Solve CG for the Newton direction
             dw, cost_log = nn_cg.nn_cgm(ggnvp_fxn, grads, np.zeros(len(grads)), n_cgiter, True)
@@ -124,11 +124,10 @@ def solver(data, f, lam, w0, loss_type, ITERNEWTON, n_cgiter=None, GN=True, iter
             beta = backtrack_beta
 
             if(loss_type is 'l2'):
-                fxn_val = lambda v: 0.5*np.linalg.norm(f(w - t*dw,X_train) - y_train)**2/n + lam * np.linalg.norm(w -
-                                                                                                                 t * dw) ** 2 / 2
+                fxn_val = lambda v: 0.5*np.linalg.norm(f(v,X_train) - y_train)**2/n + lam * np.linalg.norm(v) ** 2 / 2
             else:
                 fxn_val = lambda v: 0.5 * np.linalg.norm(
-                    softmax(f(w - t * dw, X_train)) - y_train) ** 2 / n + lam * np.linalg.norm(w - t * dw) ** 2 / 2
+                    softmax(f(v, X_train)) - y_train) ** 2 / n + lam * np.linalg.norm(v) ** 2 / 2
 
             while (fxn_val(w - t*dw) > val + alpha * t * fprime):
                 t = beta * t
@@ -140,7 +139,7 @@ def solver(data, f, lam, w0, loss_type, ITERNEWTON, n_cgiter=None, GN=True, iter
             if(GN):
                 t = 1 / (iter + 1)
             else:
-                t = 3000 / (iter + 1)
+                t = 5000 / (iter + 1)
 
         # Update the NN params
         w = w - t * dw
@@ -148,7 +147,8 @@ def solver(data, f, lam, w0, loss_type, ITERNEWTON, n_cgiter=None, GN=True, iter
         loss_log[iter+1] = val
 
         if(loss_type is 'l2'):
-            val_err[iter+1] = np.sum(abs(np.round(f(w, X_val)) - y_val)) / len(y_val)
+            # val_err[iter+1] = np.sum(abs(np.round(f(w, X_val)) - y_val)) / len(y_val)
+            val_err[iter +1] = 0.5*np.linalg.norm(f(w,X_val) - y_val)**2/n + lam * np.linalg.norm(w) ** 2 / 2
         else:
             val_err[iter + 1] = np.sum(
                 abs(np.argmax(softmax(f(w, X_val)), axis=1) - np.argmax(y_val, axis=1)) > 0,
@@ -181,7 +181,8 @@ def read_data(loss_type,seed=None):
     idx = np.argsort(train_lab)
     X = X[idx]
     y_sorted = train_lab[idx]
-
+    y_sorted = y_sorted[y_sorted < 2]           # take only 0 and 1 digits
+    X = X[:len(y_sorted),:]
     if(loss_type is 'l2'):
         y = (y_sorted < 1).astype(float)
     else:
@@ -189,7 +190,8 @@ def read_data(loss_type,seed=None):
 
     indices = np.random.permutation(X.shape[0])
     # indices = np.arange(0, X.shape[0])
-    training_idx, test_idx = indices[:50000], indices[50000:]
+    num_train = np.round(0.8*len(y_sorted)).astype(int)
+    training_idx, test_idx = indices[:num_train], indices[num_train:]
     X_train, X_val = X[training_idx, :], X[test_idx, :]
     y_train, y_val = y[training_idx], y[test_idx]
 
@@ -265,6 +267,8 @@ def nn(w, X, params, loss_type):
         else:
             if(loss_type is 'l2'):
                 a = sigmoid(z).squeeze()
+                # a = relu(z).squeeze()
+                # a = z.squeeze()
             else:
                 a = z
         count +=1
@@ -289,7 +293,7 @@ def make_model(input_dim,output_dim,loss_type,hidden_dim = None,seed=None):
 loss_type = 'l2'
 # loss_type = 'softmax'
 data = read_data(loss_type,seed=0)
-sketch_size = 784
+sketch_size = 785
 
 input_dim = data['X_train'].shape[1]
 hidden_dim = None         ## Use for regression
@@ -302,21 +306,30 @@ else:
 
 model,w0 = make_model(input_dim,output_dim,loss_type,hidden_dim,seed=0)
 
-ITER_GN = 5
-ITER_GNS = 10
+ITER_GN = 10
+ITER_GNHS = 20
+ITER_GNS = 40
 ITER_SGD = 50
-n_cg_iter = 5
+n_cg_iter = 7
 
 # lam = 0.0001          ## Use for softmax
-lam = 10 / data['X_train'].shape[0] ## use for l2 regression
+lam = 1 / data['X_train'].shape[0] ## use for l2 regression
 
 # Gauss-Newton
-# w_star_gn, loss_log, t_solve = solver(data, model, lam, w0, ITER_GN, n_cg_iter)
+w_star_gn, loss_log_gn, val_err_gn, t_solve_gn = solver(data, model, lam, w0, loss_type, ITER_GN, n_cg_iter, GN=True,
+                                                     iterative = True, backtrack = True)
 
 # Gauss-Newton Sketch
-w_star_gns, loss_log_sketch, val_err_sketch, t_solve_sketch = solver(data, model, lam, w0, loss_type,
-                                                                     ITER_GNS, n_cg_iter,
+w_star_gnhs, loss_log_sketch, val_err_sketch, t_solve_sketch = solver(data, model, lam, w0, loss_type,
+                                                                     ITER_GNHS, n_cg_iter,
                                                      GN=True, iterative = False,
+                                                     backtrack=False, sketch_size=sketch_size)
+
+
+# Gauss-Newton Half-Sketch (Iterative)
+w_star_gns, loss_log_hsketch, val_err_hsketch, t_solve_hsketch = solver(data, model, lam, w0, loss_type,
+                                                                     ITER_GNS, n_cg_iter,
+                                                     GN=True, iterative = True,
                                                      backtrack=False, sketch_size=sketch_size)
 
 # test = softmax(f2(w_star_gns,X_val,params))
@@ -328,6 +341,7 @@ w_star_gns, loss_log_sketch, val_err_sketch, t_solve_sketch = solver(data, model
 # plt.show()
 
 # SGD
+lam = 1 / data['X_train'].shape[0] ## use for l2 regression
 w_star_sgd, loss_log_sgd, val_err_sgd, t_solve_sgd = solver(data, model, lam, w0, loss_type,ITER_SGD,
                                                             GN=False,
                                                backtrack=False, sketch_size=sketch_size)
@@ -341,17 +355,21 @@ w_star_sgd, loss_log_sgd, val_err_sgd, t_solve_sgd = solver(data, model, lam, w0
 # plt.legend(['Gauss-Newton', 'Gauss-Newton-Sketch', 'SGD'])
 
 plt.subplot(2,1,1)
-plt.semilogy(np.arange(len(loss_log_sketch)), loss_log_sketch, 'g',np.arange(len(loss_log_sgd)), loss_log_sgd, 'b')
+plt.semilogy(np.arange(len(loss_log_gn)), loss_log_gn, 'k', np.arange(len(loss_log_hsketch)),
+             loss_log_hsketch, 'g', np.arange(len(loss_log_sketch)), loss_log_sketch,
+             'r', np.arange(len(loss_log_sgd)), loss_log_sgd, 'b')
 plt.title('Training loss')
 plt.grid(True, which='both')
-plt.legend(['Gauss-Newton-Sketch', 'SGD'])
+plt.legend(['Gauss-Newton', 'Gauss-Newton-Sketch','Gauss-Newton Half-Sketch','SGD'])
 
 plt.subplot(2,1,2)
-plt.plot(np.arange(len(val_err_sketch)), val_err_sketch, 'g',np.arange(len(val_err_sgd)), val_err_sgd, 'b')
+plt.plot(np.arange(len(val_err_gn)), val_err_gn, 'k', np.arange(len(val_err_hsketch)), val_err_hsketch, 'g',
+         np.arange(len(val_err_sketch)), val_err_sketch, 'r',
+         np.arange(len(val_err_sgd)), val_err_sgd, 'b')
 plt.xlabel('Iteration')
 plt.title('Validation Loss')
 plt.grid(True, which='both')
-plt.legend(['Gauss-Newton-Sketch', 'SGD'])
+plt.legend(['Gauss-Newton', 'Gauss-Newton-Sketch','Gauss-Newton Half-Sketch','SGD'])
 plt.show()
 
 # plt.subplot(1, 2, 1)
@@ -364,20 +382,24 @@ plt.show()
 # plt.legend(['Gauss-Newton', 'Gauss-Newton-Sketch', 'SGD'])
 
 plt.subplot(2,1,1)
-plt.semilogy(np.arange(len(loss_log_sketch)) * t_solve_sketch / ITER_GNS, loss_log_sketch, 'g', np.arange(len(
+plt.semilogy(np.arange(len(loss_log_gn)) * t_solve_gn / ITER_GN, loss_log_gn, 'k', np.arange(len(
+    loss_log_hsketch)) * t_solve_hsketch / ITER_GNS, loss_log_hsketch, 'g', np.arange(len(
+    loss_log_sketch)) * t_solve_sketch / ITER_GNS, loss_log_sketch, 'r', np.arange(len(
     loss_log_sgd)) * t_solve_sgd / ITER_SGD, loss_log_sgd, 'b')
 plt.title('Training loss')
 plt.grid(True, which='both')
-plt.legend(['Gauss-Newton-Sketch', 'SGD'])
+plt.legend(['Gauss-Newton', 'Gauss-Newton-Sketch','Gauss-Newton Half-Sketch','SGD'])
 
 
 plt.subplot(2,1,2)
-plt.plot(np.arange(len(val_err_sketch)) * t_solve_sketch / ITER_GNS, val_err_sketch, 'g', np.arange(len(
+plt.plot(np.arange(len(val_err_gn)) * t_solve_gn / ITER_GN, val_err_gn, 'k', np.arange(len(
+    val_err_hsketch)) * t_solve_hsketch / ITER_GNS, val_err_hsketch, 'g', np.arange(len(
+    val_err_sketch)) * t_solve_sketch / ITER_GNS, val_err_sketch, 'r',  np.arange(len(
     val_err_sgd)) * t_solve_sgd / ITER_SGD, val_err_sgd, 'b')
 plt.xlabel('Seconds')
 plt.title('Validation loss')
 plt.grid(True, which='both')
-plt.legend(['Gauss-Newton-Sketch', 'SGD'])
+plt.legend(['Gauss-Newton', 'Gauss-Newton-Sketch','Gauss-Newton Half-Sketch','SGD'])
 plt.show()
 
 
