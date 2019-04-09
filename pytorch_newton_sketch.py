@@ -53,10 +53,34 @@ class Model(nn.Module):
 
         return out
 
+#We will only perform binary classification between two labels
+def filter_class_labels(dataset):
+    #Filter out all digits except these two
+    l1 = 0
+    l2 = 1
+    
+    if dataset.train:
+        idx_l1 = dataset.train_labels == l1
+        idx_l2 = dataset.train_labels == l2 
+        
+        idx = idx_l1 + idx_l2
+        dataset.train_labels = dataset.train_labels[idx]
+        dataset.train_data = dataset.train_data[idx]
+    else:
+        idx_l1 = dataset.test_labels == l1
+        idx_l2 = dataset.test_labels == l2
+
+        idx = idx_l1 + idx_l2
+        dataset.test_labels = dataset.test_labels[idx]
+        dataset.test_data = dataset.test_data[idx]
+
 def get_dataloader(args):
     if args.dataset == 'mnist':
         train_dataset = datasets.MNIST(root='./data/', train=True, download=True, transform=transforms.ToTensor())
         test_dataset = datasets.MNIST(root='./data/', train=False, download=True, transform=transforms.ToTensor())
+
+        filter_class_labels(train_dataset)
+        filter_class_labels(test_dataset)
 
         train_dataloader = DataLoader(train_dataset, batch_size=args.batch_size, shuffle=False)
         test_dataloader = DataLoader(test_dataset, batch_size=args.batch_size, shuffle=False)
@@ -68,26 +92,35 @@ def get_dataloader(args):
 def main(args):
     train_dataloader, test_dataloader = get_dataloader(args)
 
-    model = Model(input_size=784, two_layer=args.two_layer)
-
-    '''
-    n = len(train_dataloader)
-    reg = 10/n #from the matlab version, lambda is 10/m
-    optimizer = torch.optim.SGD(model.parameters(), lr=1e-2, weight_decay=reg) 
-    '''
 
     #import pdb; pdb.set_trace()
-    optimizer = GN_Solver(model.parameters(), reg=args.reg)
 
+    print('Training using Gauss-Newton Solver')
+    #Train using Gauss-Newton solver
+    model = Model(input_size=784, two_layer=args.two_layer) #init model
+    optimizer = GN_Solver(model.parameters(), lr=0.1, reg=args.reg, backtrack=0)
     for epoch in range(args.num_epochs):
-        loss, accuracy = train(epoch, model, train_dataloader, optimizer)
+        loss, accuracy = train_GN(epoch, model, train_dataloader, optimizer)
         print('Epoch: {}, Loss: {}, Accuracy: {}'.format(epoch, loss.item(), accuracy.item()))
+
+
+    #TODO:
+    #Train using Gauss-Newton Sketch \& Half-sketch
     
-    loss, accuracy = test(model, test_dataloader)
-    print('Test Loss: {}, Accuracy: {}'.format(loss, accuracy))
+    #Train using SGD
+    print('-'*30)
+    print('Training using SGD')
+    model = Model(input_size=784, two_layer=args.two_layer) #re-init model 
+    optimizer = torch.optim.SGD(model.parameters(), lr=0.1, weight_decay=args.reg) 
+    for epoch in range(args.num_epochs):
+        loss, accuracy = train_SGD(epoch, model, train_dataloader, optimizer)
+        print('Epoch: {}, Loss: {}, Accuracy: {}'.format(epoch, loss.item(), accuracy.item()))
+
+    #loss, accuracy = test(model, test_dataloader)
+    #print('Test Loss: {}, Accuracy: {}'.format(loss, accuracy))
 
 #forward training pass
-def train(epoch, model, dataloader, optimizer):
+def train_GN(epoch, model, dataloader, optimizer):
    model.train() #set model to training mode (typically only matters with dropout & batchnorm) 
    criterion = nn.MSELoss() 
 
@@ -98,7 +131,7 @@ def train(epoch, model, dataloader, optimizer):
        images, gt_labels = data
        labels = (gt_labels == 0).float() #transform to binary classification between 0 and non-zero
        images = images.view(-1, 28*28*1) #reshape image to vector
-
+       
        #Custom function b/c conjuage gradient needs to re-evaluate the function multiple times
        def closure():
            optimizer.zero_grad()
@@ -109,8 +142,32 @@ def train(epoch, model, dataloader, optimizer):
 
            err = pred - labels.unsqueeze(1) 
            return loss, err, pred
-       
+
        loss, pred = optimizer.step(closure)
+
+       losses.append(loss.item())
+       acc = torch.sum((pred.squeeze(1)>0.5).float() == labels).float()/len(labels)
+       accuracy.append(acc.item())
+
+   return np.mean(losses), np.mean(accuracy)
+
+def train_SGD(epoch, model, dataloader, optimizer):
+   model.train() #set model to training mode (typically only matters with dropout & batchnorm) 
+   criterion = nn.MSELoss() 
+
+   losses = []
+   accuracy = []
+   
+   for idx, data in enumerate(dataloader):
+       images, gt_labels = data
+       labels = (gt_labels == 0).float() #transform to binary classification between 0 and non-zero
+       images = images.view(-1, 28*28*1) #reshape image to vector
+       
+       optimizer.zero_grad()
+       pred = model(images)
+       loss = criterion(pred.squeeze(), labels)
+       loss.backward()
+       optimizer.step()
 
        losses.append(loss.item())
        acc = torch.sum((pred.squeeze(1)>0.5).float() == labels).float()/len(labels)
