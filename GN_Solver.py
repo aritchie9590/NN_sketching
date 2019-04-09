@@ -12,11 +12,12 @@ Args:
     w: take derivative w.r.t to parameters of network
     v: vector multiply with Gauss-Newton approx
 """
-def _make_ggnvp(f, w, v=None):
-    u = torch.ones(f.shape)
-    u.requires_grad = True
+def _make_ggnvp(f, w, reg, v=None):
+    n = f.shape[0]
+    u = f.clone()
 
     uJ, = torch.autograd.grad(f,w,u, create_graph=True) #gradient
+    grad = uJ/n + reg * w #average gradient plus regularizer
     
     def ggnvp(v):
         assert v.requires_grad, 'variable must have requires_grad as True'
@@ -24,9 +25,10 @@ def _make_ggnvp(f, w, v=None):
         Jv, = torch.autograd.grad(uJ, u, v, create_graph=True)
         JtJv, = torch.autograd.grad(Jv, v, Jv, create_graph=True)
 
+        JtJv = JtJv/n + reg * v #average & regularize
         return JtJv
 
-    return uJ, ggnvp 
+    return grad, ggnvp 
 
 #solve for optimal step direction using the Conjugate Gradient Descent method
 def _conjugate_gradient(ggnvp, grad, w0, max_iters):
@@ -34,6 +36,7 @@ def _conjugate_gradient(ggnvp, grad, w0, max_iters):
 
     cost = lambda v: 0.5*v.transpose(0,1) @ (ggnvp(v)) - grad.transpose(0,1)@v
 
+    w0.requires_grad = True
     w = w0.clone()
     r = grad - ggnvp(w)
     p = r
@@ -158,12 +161,12 @@ class GN_Solver(Optimizer):
         w0 = self._params[0]
         
         #Compute Gauss-Newton vector product 
-        grad, ggnvp = _make_ggnvp(err,w0) 
+        grad, ggnvp = _make_ggnvp(err,w0,reg) 
         #Solve for the Conjugate Gradient Direction
-        dw = _conjugate_gradient(ggnvp, grad, w0, max_iter)
+        dw = _conjugate_gradient(ggnvp, grad, torch.zeros(grad.shape), max_iter)
 
         #Perform backtracking line search
-        val = loss + 0.5 * reg * torch.norm(w0)
+        val = loss + 0.5 * reg * torch.norm(w0)**2
         fprime = dw @ grad.transpose(0,1)
         
         t = lr 
@@ -180,5 +183,6 @@ class GN_Solver(Optimizer):
 
         #Update the model parameters
         self._add_grad(-t, dw)
+        print('Update weights with learning rate: {}'.format(t))
 
         return val, pred

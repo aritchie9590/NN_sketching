@@ -18,13 +18,16 @@ default_datasets = ['mnist']
 parser.add_argument('--two_layer', action='store_true', help='add parameter to use two-layer architecture instead of single-layer')
 parser.add_argument('--num_epochs', default=10, type=int, help='num of epochs to train')
 parser.add_argument('--batch_size', default=60000, type=int, help='mini-batch size') 
-parser.add_argument('--reg', default=0.0001, type=float, help='regularizer')
+#parser.add_argument('--reg', default=0.0001, type=float, help='regularizer')
 
 parser.add_argument('--cuda', action='store_true', help='use gpu')
 
 parser.set_defaults(cuda=False)
 parser.set_defaults(two_layer=False)
 args = parser.parse_args()
+
+torch.manual_seed(0)
+np.random.seed(0)
 
 #simple feed-forward neural network
 class Model(nn.Module):
@@ -45,11 +48,18 @@ class Model(nn.Module):
         '''
         self.two_layer = None 
 
+        '''
+        def init_weights(self, m):
+                 for param in m.parameters():
+                     if param.ndimension() > 1:
+                         nn.init.xavier_uniform(param)
+        '''
         #Set-up feed-forward network as two layer or single layer
-        self.ff_network = self.two_layer if two_layer else self.single_layer 
+        #self.ff_network = self.two_layer if two_layer else self.single_layer 
 
     def forward(self, x):
-        out = self.ff_network(x)
+        #out = self.ff_network(x)
+        out = self.single_layer(x)
 
         return out
 
@@ -87,18 +97,22 @@ def get_dataloader(args):
     else:
         sys.exit('dataset {} unknown. Select from {}'.format(args.dataset, default_datasets))
 
-    return train_dataloader, test_dataloader
+    num_train = len(train_dataset.train_labels)
+
+    return train_dataloader, test_dataloader, num_train
 
 def main(args):
-    train_dataloader, test_dataloader = get_dataloader(args)
-
-
-    #import pdb; pdb.set_trace()
+    import pdb; pdb.set_trace()
+    train_dataloader, test_dataloader, num_train = get_dataloader(args)
+    reg = 1/num_train 
 
     print('Training using Gauss-Newton Solver')
     #Train using Gauss-Newton solver
     model = Model(input_size=784, two_layer=args.two_layer) #init model
-    optimizer = GN_Solver(model.parameters(), lr=0.1, reg=args.reg, backtrack=0)
+    #manually init weights to match Kyle's code
+    model.single_layer[0].weight.data = torch.from_numpy(np.random.randn(1,784)).float()
+
+    optimizer = GN_Solver(model.parameters(), lr=1.0, reg=reg, backtrack=50)
     for epoch in range(args.num_epochs):
         loss, accuracy = train_GN(epoch, model, train_dataloader, optimizer)
         print('Epoch: {}, Loss: {}, Accuracy: {}'.format(epoch, loss.item(), accuracy.item()))
@@ -111,7 +125,7 @@ def main(args):
     print('-'*30)
     print('Training using SGD')
     model = Model(input_size=784, two_layer=args.two_layer) #re-init model 
-    optimizer = torch.optim.SGD(model.parameters(), lr=0.1, weight_decay=args.reg) 
+    optimizer = torch.optim.SGD(model.parameters(), lr=0.1, weight_decay=reg) 
     for epoch in range(args.num_epochs):
         loss, accuracy = train_SGD(epoch, model, train_dataloader, optimizer)
         print('Epoch: {}, Loss: {}, Accuracy: {}'.format(epoch, loss.item(), accuracy.item()))
@@ -128,17 +142,16 @@ def train_GN(epoch, model, dataloader, optimizer):
    accuracy = []
    
    for idx, data in enumerate(dataloader):
-       images, gt_labels = data
-       labels = (gt_labels == 0).float() #transform to binary classification between 0 and non-zero
+       images, labels = data
        images = images.view(-1, 28*28*1) #reshape image to vector
+       labels = labels.float()
        
        #Custom function b/c conjuage gradient needs to re-evaluate the function multiple times
        def closure():
            optimizer.zero_grad()
            pred = model(images)
            
-           loss = criterion(pred, labels)
-           #loss.backward(retain_graph=True, create_graph=True) #TODO: May have to subtract gradient manually so they don't accumulate
+           loss = 0.5*criterion(pred, labels)
 
            err = pred - labels.unsqueeze(1) 
            return loss, err, pred
