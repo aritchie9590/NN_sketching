@@ -92,7 +92,7 @@ class GN_Solver(Optimizer):
 
         self._params = self.param_groups[0]['params']
         self._numel_cache = None
-        self.grad_update = 1 #Keep track of the number of updates, used for decreasing step size
+        self.grad_update = 0 #Keep track of the number of updates, used for decreasing step size
 
     #TODO: This may not be needed
     def __setstate__(self, state):
@@ -145,7 +145,7 @@ class GN_Solver(Optimizer):
         """
         
         #import pdb; pdb.set_trace()
-        orig_loss,err,pred, epoch = closure()
+        orig_loss,err,pred = closure()
         loss = orig_loss
 
         group = self.param_groups[0]
@@ -171,6 +171,7 @@ class GN_Solver(Optimizer):
         val = loss + 0.5 * reg * torch.norm(w0)**2
         fprime = -1*dw @ grad.transpose(0,1)
         
+        self.grad_update += 1
         if backtrack > 0:
             t = lr
 
@@ -186,7 +187,6 @@ class GN_Solver(Optimizer):
                     break
         else: #use a decreasing step-size
             t = 1/self.grad_update
-            self.grad_update += 1
 
         #Update the model parameters
         self._add_grad(-t, dw)
