@@ -4,6 +4,7 @@ import numpy as np
 
 import torch
 import torch.nn as nn
+import torch.nn.functional as F
 import torchvision.datasets as datasets
 import torchvision.transforms as transforms
 from torch.utils.data import DataLoader
@@ -102,21 +103,21 @@ def get_dataloader(args):
     return train_dataloader, test_dataloader, num_train
 
 def main(args):
-    import pdb; pdb.set_trace()
+    #import pdb; pdb.set_trace()
     train_dataloader, test_dataloader, num_train = get_dataloader(args)
     reg = 1/num_train 
 
     print('Training using Gauss-Newton Solver')
     #Train using Gauss-Newton solver
     model = Model(input_size=784, two_layer=args.two_layer) #init model
-    #manually init weights to match Kyle's code
-    model.single_layer[0].weight.data = torch.from_numpy(np.random.randn(1,784)).float()
 
-    optimizer = GN_Solver(model.parameters(), lr=1.0, reg=reg, backtrack=50)
+    optimizer = GN_Solver(model.parameters(), lr=1.0, reg=reg, backtrack=0)
     for epoch in range(args.num_epochs):
         loss, accuracy = train_GN(epoch, model, train_dataloader, optimizer)
         print('Epoch: {}, Loss: {}, Accuracy: {}'.format(epoch, loss.item(), accuracy.item()))
 
+    loss, accuracy = test(model, test_dataloader)
+    print('Test Loss: {}, Accuracy: {}'.format(loss, accuracy))
 
     #TODO:
     #Train using Gauss-Newton Sketch \& Half-sketch
@@ -130,13 +131,12 @@ def main(args):
         loss, accuracy = train_SGD(epoch, model, train_dataloader, optimizer)
         print('Epoch: {}, Loss: {}, Accuracy: {}'.format(epoch, loss.item(), accuracy.item()))
 
-    #loss, accuracy = test(model, test_dataloader)
-    #print('Test Loss: {}, Accuracy: {}'.format(loss, accuracy))
+    loss, accuracy = test(model, test_dataloader)
+    print('Test Loss: {}, Accuracy: {}'.format(loss, accuracy))
 
 #forward training pass
 def train_GN(epoch, model, dataloader, optimizer):
    model.train() #set model to training mode (typically only matters with dropout & batchnorm) 
-   criterion = nn.MSELoss() 
 
    losses = []
    accuracy = []
@@ -146,15 +146,18 @@ def train_GN(epoch, model, dataloader, optimizer):
        images = images.view(-1, 28*28*1) #reshape image to vector
        labels = labels.float()
        
-       #Custom function b/c conjuage gradient needs to re-evaluate the function multiple times
+       #Custom function b/c cost may need to be evaluated several times for backtracking
        def closure():
            optimizer.zero_grad()
            pred = model(images)
            
-           loss = 0.5*criterion(pred, labels)
+           loss = 0.5*F.mse_loss(pred.squeeze(), labels)
 
            err = pred - labels.unsqueeze(1) 
-           return loss, err, pred
+           return loss, err, pred, epoch
+       
+       if epoch == 9:
+           print('Stop')
 
        loss, pred = optimizer.step(closure)
 
@@ -166,19 +169,18 @@ def train_GN(epoch, model, dataloader, optimizer):
 
 def train_SGD(epoch, model, dataloader, optimizer):
    model.train() #set model to training mode (typically only matters with dropout & batchnorm) 
-   criterion = nn.MSELoss() 
 
    losses = []
    accuracy = []
    
    for idx, data in enumerate(dataloader):
-       images, gt_labels = data
-       labels = (gt_labels == 0).float() #transform to binary classification between 0 and non-zero
+       images, labels = data
        images = images.view(-1, 28*28*1) #reshape image to vector
+       labels = labels.float()
        
        optimizer.zero_grad()
        pred = model(images)
-       loss = criterion(pred.squeeze(), labels)
+       loss = 0.5*F.mse_loss(pred.squeeze(), labels)
        loss.backward()
        optimizer.step()
 
@@ -191,20 +193,18 @@ def train_SGD(epoch, model, dataloader, optimizer):
 #forward testing pass
 def test(model, dataloader):
     model.eval()
-    criterion = nn.MSELoss()
 
     losses = []
     accuracy = []
 
     for idx, data in enumerate(dataloader):
         images, labels = data
-        labels = (labels == 0).float() #transform to binary classification between 0 and non-zero
-
         images = images.view(-1, 28*28*1)
+        labels = labels.float()
 
-        pred = model(images).squeeze(1)
+        pred = model(images).squeeze()
 
-        loss = criterion(pred, labels)
+        loss = 0.5*F.mse_loss(pred, labels)
         
         losses.append(loss.item())
         acc = torch.sum((pred>0.5).float() == labels).float()/len(labels)

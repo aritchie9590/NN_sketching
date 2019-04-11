@@ -65,6 +65,7 @@ def _conjugate_gradient(ggnvp, grad, w0, max_iters):
     return w
 
 class GN_Solver(Optimizer):
+
     """
     Args:
         params (iterable): iterable of parameters to optimize or dicts defining parameter groups
@@ -91,6 +92,7 @@ class GN_Solver(Optimizer):
 
         self._params = self.param_groups[0]['params']
         self._numel_cache = None
+        self.grad_update = 1 #Keep track of the number of updates, used for decreasing step size
 
     #TODO: This may not be needed
     def __setstate__(self, state):
@@ -143,7 +145,7 @@ class GN_Solver(Optimizer):
         """
         
         #import pdb; pdb.set_trace()
-        orig_loss,err,pred = closure()
+        orig_loss,err,pred, epoch = closure()
         loss = orig_loss
 
         group = self.param_groups[0]
@@ -167,10 +169,12 @@ class GN_Solver(Optimizer):
 
         #Perform backtracking line search
         val = loss + 0.5 * reg * torch.norm(w0)**2
-        fprime = dw @ grad.transpose(0,1)
+        fprime = -1*dw @ grad.transpose(0,1)
         
-        t = lr 
         if backtrack > 0:
+            t = lr
+
+            #TODO: If using backtracking, get new loss with (w0 - t*dw) as network parameters
             bts = 0
             alpha = bt_alpha
             beta = bt_beta 
@@ -179,10 +183,12 @@ class GN_Solver(Optimizer):
                 bts += 1
                 if bts > backtrack:
                     print('Maximum backtracking reached, accuracy not guaranteed')
-                    break 
+                    break
+        else: #use a decreasing step-size
+            t = 1/self.grad_update
+            self.grad_update += 1
 
         #Update the model parameters
         self._add_grad(-t, dw)
-        print('Update weights with learning rate: {}'.format(t))
-
+        
         return val, pred
