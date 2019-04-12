@@ -30,14 +30,11 @@ def solver(data, f, lam, w0, loss_type, ITERNEWTON, n_cgiter=None, backtrack=Tru
 
     n = X_train.shape[0]
 
-    # loss_log[0] = 0.5*np.linalg.norm(f(w, X_train) - y_train)**2 / n + lam * np.linalg.norm(w) ** 2 / 2
-    #     # val_err[0] = 0.5*np.linalg.norm(f(w, X_val) - y_val)**2 / n
-
     if (loss_type is 'l2'):
         loss_log[0] = 0.5 * np.linalg.norm(f(w, X_train) - y_train) ** 2 / n + lam * np.linalg.norm(w) ** 2 / 2
         val_err[0] = 0.5 * np.linalg.norm(f(w, X_val) - y_val) ** 2 / n + lam * np.linalg.norm(w) ** 2 / 2
     else:  # softmax
-        loss_log[0] = 0.5 * np.sum(np.linalg.norm(softmax(f(w, X_train)) - y_train,axis=1)**2) / n + lam * \
+        loss_log[0] = 0.5 * np.linalg.norm(softmax(f(w, X_train)) - y_train)**2 / n + lam * \
                       np.linalg.norm(
             w) ** 2 / 2
         val_err[0] = np.sum(abs(np.argmax(softmax(f(w, X_val)), axis=1) - np.argmax(y_val, axis=1)) > 0,
@@ -65,9 +62,6 @@ def solver(data, f, lam, w0, loss_type, ITERNEWTON, n_cgiter=None, backtrack=Tru
             e = softmax(f(w, Xs)) - y_train[sample_idx]
             loss = np.sum(np.linalg.norm(e,axis=1)**2) / n
 
-        # e = f(w, Xs) - y_train[sample_idx]
-        # loss = np.linalg.norm(e) ** 2 / n  # compute loss
-
         g = vjp(e) / n + lam * w
 
         jvp = make_jvp(f)(w, Xs)
@@ -93,16 +87,12 @@ def solver(data, f, lam, w0, loss_type, ITERNEWTON, n_cgiter=None, backtrack=Tru
             alpha = backtrack_alpha
             beta = backtrack_beta
 
-            # bts = 0
-            # while (np.linalg.norm(f(w + t * dw, Xs) - y_train[sample_idx]) ** 2 / n + 0.5 * lam * np.linalg.norm(
-            #         w + t * dw) ** 2 > val + alpha * t * decr):
-
             if (loss_type is 'l2'):
                 fxn_val = lambda v: 0.5 * np.linalg.norm(f(v, Xs) - y_train[sample_idx]) ** 2 / n + lam * np.linalg.norm(
                     v) ** 2 / 2
             else:
-                fxn_val = lambda v: 0.5*np.sum(np.linalg.norm(
-                    softmax(f(v, Xs)) - y_train[sample_idx],axis=1)**2) / n + lam * np.linalg.norm(v) ** 2 / 2
+                fxn_val = lambda v: 0.5*np.linalg.norm(
+                    softmax(f(v, Xs)) - y_train[sample_idx])**2 / n + lam * np.linalg.norm(v) ** 2 / 2
 
             bts = 0
             while (fxn_val(w + t*dw) > val + alpha * t * decr):
@@ -119,7 +109,6 @@ def solver(data, f, lam, w0, loss_type, ITERNEWTON, n_cgiter=None, backtrack=Tru
         w = w + t * dw
         w_log[:,iter + 1] = w
 
-        # val_err[iter +1] = np.linalg.norm(f(w,X_val) - y_val)**2 / n
 
         if (loss_type is 'l2'):
             loss = np.linalg.norm(f(w, X_train) - y_train) ** 2 / n + 0.5 * lam * np.linalg.norm(w) ** 2
@@ -128,7 +117,7 @@ def solver(data, f, lam, w0, loss_type, ITERNEWTON, n_cgiter=None, backtrack=Tru
             val_err[iter + 1] = 0.5 * np.linalg.norm(f(w, X_val) - y_val) ** 2 / n + lam * np.linalg.norm(w) ** 2 / 2
 
         else:
-            loss = np.sum(np.linalg.norm(softmax(f(w, X_train)) - y_train,axis=1) ** 2) / n + 0.5 * lam * \
+            loss = np.linalg.norm(softmax(f(w, X_train)) - y_train) ** 2 / n + 0.5 * lam * \
                    np.linalg.norm(w) ** 2
             loss_log[iter + 1] = loss
 
@@ -142,7 +131,7 @@ def solver(data, f, lam, w0, loss_type, ITERNEWTON, n_cgiter=None, backtrack=Tru
             w_log = w_log[:,:iter]
             break
 
-        print("Loss function: {:.5f}, Validation error: {:.5f}".format(loss_log[iter + 1], val_err[iter + 1]))
+        print("Loss function: {:.5f}, Validation error: {:.5f}".format(loss, val_err[iter + 1]))
 
     end = time.time()
     t_solve = end - start

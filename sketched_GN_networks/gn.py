@@ -51,7 +51,6 @@ def solver(data, f, lam, w0, loss_type, ITERNEWTON, n_cgiter=None, backtrack=Tru
         else:  # Softmax
             e = softmax(f(w, X_train)) - y_train
 
-        # e = f(w, X_train) - y_train
         loss = np.linalg.norm(e) ** 2 / n   # compute loss
 
         g = vjp(e)/n + lam * w
@@ -97,15 +96,9 @@ def solver(data, f, lam, w0, loss_type, ITERNEWTON, n_cgiter=None, backtrack=Tru
         else:
             t = 1 / (iter + 1)
 
-        # test = fxn_val(w + t * dw)
-        # print(test)
-        # test2 = val + alpha * t * decr
-
                 # Update the NN params
         w = w + t * dw
         w_log[:,iter + 1] = w
-
-        # val_err[iter + 1] = np.linalg.norm(f(w,X_val) - y_val)**2 / n
 
 
         if (loss_type is 'l2'):
