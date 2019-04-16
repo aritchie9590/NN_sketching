@@ -20,7 +20,7 @@ parser = argparse.ArgumentParser()
 parser.add_argument('--dataset', default='mnist', type=str, help='dataset(s) to use')
 default_datasets = ['mnist']
 parser.add_argument('--two_layer', action='store_true', help='add parameter to use two-layer architecture instead of single-layer')
-parser.add_argument('--max_iter', default=20, type=int, help='max num of iterations to train on')
+parser.add_argument('--max_iter', default=30, type=int, help='max num of iterations to train on')
 parser.add_argument('--batch_size', default=60000, type=int, help='mini-batch size') 
 
 parser.add_argument('--sketch_size', default=784, type=int, help='sketch size for sketching algorithms')
@@ -42,30 +42,26 @@ class Model(nn.Module):
         super().__init__()
 
         self.single_layer = nn.Sequential(
-                            nn.Linear(input_size, 1, bias=False),
+                            nn.Linear(input_size, 1, bias=True),
                             nn.Sigmoid())
 
-        '''
         self.two_layer = nn.Sequential(
                          nn.Linear(input_size, hidden_dim),
                          nn.Sigmoid(), #Or ReLU()
                          nn.Linear(hidden_dim, 1),
                          nn.Sigmoid())
-        '''
-        self.two_layer = None 
 
-        '''
-        def init_weights(self, m):
-                 for param in m.parameters():
-                     if param.ndimension() > 1:
-                         nn.init.xavier_uniform(param)
-        '''
         #Set-up feed-forward network as two layer or single layer
-        #self.ff_network = self.two_layer if two_layer else self.single_layer 
+        if two_layer:
+            self.ff_network = self.two_layer
+            self.single_layer = None
+        else:
+            self.ff_network = self.single_layer
+            self.two_layer = None
 
     def forward(self, x):
-        #out = self.ff_network(x)
-        out = self.single_layer(x)
+        out = self.ff_network(x)
+        #out = self.single_layer(x)
 
         return out
 
@@ -118,14 +114,15 @@ def main(args):
     #Train using SGD
     print('Training using SGD')
     model = Model(input_size=784, two_layer=args.two_layer) #re-init model 
-    optimizer = torch.optim.SGD(model.parameters(), lr=0.1, weight_decay=reg) 
+    optimizer = torch.optim.SGD(model.parameters(), lr=0.01, weight_decay=reg) 
     time_start = time.time()
     num_iter_updates = [0] #wrapped in list b/c integers are immutable
     while num_iter_updates[0] < args.max_iter:
         loss, accuracy = train_SGD(model, train_dataloader, optimizer, losses_sgd, num_iter_updates)
 
     time_end = time.time()
-    print('Trained in {0:.3f}s'.format(time_end-time_start))
+    t_solve_sgd = time_end - time_start 
+    print('Trained in {0:.3f}s'.format(t_solve_sgd))
     loss, accuracy = test(model, test_dataloader)
     print('Test Loss: {}, Accuracy: {}'.format(loss, accuracy))
 
@@ -139,7 +136,8 @@ def main(args):
     while optimizer.grad_update < args.max_iter:
         loss, accuracy = train_GN(model, train_dataloader, optimizer, losses_gn)
     time_end = time.time()
-    print('Trained in {0:.3f}s'.format(time_end-time_start))
+    t_solve_gn = time_end - time_start 
+    print('Trained in {0:.3f}s'.format(t_solve_gn))
     loss, accuracy = test(model, test_dataloader)
     print('Test Loss: {}, Accuracy: {}'.format(loss, accuracy))
 
@@ -155,18 +153,19 @@ def main(args):
     while optimizer.grad_update < args.max_iter:
         loss, accuracy = train_GN(model, train_dataloader, optimizer, losses_gn_sketch)
     time_end = time.time()
-    print('Trained in {0:.3f}s'.format(time_end-time_start))
+    t_solve_gn_sketch = time_end - time_start 
+    print('Trained in {0:.3f}s'.format(t_solve_gn_sketch))
     loss, accuracy = test(model, test_dataloader)
     print('Test Loss: {}, Accuracy: {}'.format(loss, accuracy))
     
     #TODO:
     #Train using Gauss-Newton Half-sketch
     
-    
-    plt.subplot(2,1,1)
-    plt.semilogy(np.arange(len(losses_gn)), losses_gn, 'k', np.arange(len(losses_gn_sketch)),
-                losses_gn_sketch, 'g', np.arange(len(losses_sgd)), losses_sgd, 'b')
+    plt.semilogy(np.arange(len(losses_gn)) * t_solve_gn / args.max_iter, losses_gn, 'k', 
+                 np.arange(len(losses_gn_sketch)) * t_solve_gn_sketch / args.max_iter,losses_gn_sketch, 'g', 
+                 np.arange(len(losses_sgd)) * t_solve_sgd / args.max_iter, losses_sgd, 'b')
     plt.title('Training loss')
+    plt.xlabel('Seconds')
     plt.grid(True, which='both')
     plt.legend(['Gauss-Newton', 'Gauss-Newton Sketch', 'SGD'])
     plt.show()
@@ -176,6 +175,10 @@ def train_GN(model, dataloader, optimizer, all_losses):
    accuracy = []
    
    for idx, data in enumerate(dataloader):
+
+       if optimizer.grad_update >= args.max_iter: #max iteration termination criteria
+           break
+
        images, labels = data
        images = images.view(-1, 28*28*1) #reshape image to vector
        labels = labels.float()
@@ -219,6 +222,7 @@ def train_SGD(model, dataloader, optimizer, all_losses, num_iter_updates):
        all_losses.append(loss.item())
        acc = torch.sum((pred.squeeze(1)>0.5).float() == labels).float()/len(labels)
        accuracy.append(acc.item())
+       #print('Iter: {}, Loss: {}, Accuracy: {}'.format(idx,loss.item(),acc.item()))
 
        num_iter_updates[0] = num_iter_updates[0] + 1
 

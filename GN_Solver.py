@@ -12,20 +12,30 @@ Args:
     w: take derivative w.r.t to parameters of network
     v: vector multiply with Gauss-Newton approx
 """
-def _make_ggnvp(f, w, reg, v=None):
-    n = f.shape[0]
-    u = f.clone()
+def _make_ggnvp(grad_params, u, n, reg, v=None):
+    grad = torch.nn.utils.parameters_to_vector(grad_params)
+    grad = grad/n + reg*grad #average gradients + regularize
 
-    uJ, = torch.autograd.grad(f,w,u, create_graph=True) #gradient
-    grad = uJ/n + reg * w #average gradient plus regularizer
-    
-    def ggnvp(v):
-        assert v.requires_grad, 'variable must have requires_grad as True'
+    def ggnvp(w):
+        assert w.requires_grad, 'variable must have requires_grad as True'
 
-        Jv, = torch.autograd.grad(uJ, u, v, create_graph=True)
-        JtJv, = torch.autograd.grad(Jv, v, Jv, create_graph=True)
+        JtJv = []
+        offset = 0
+        for uJ in grad_params:
+            #Separate weights into corresponding elements and then reshape into shape uJ
+            numel = uJ.numel()
+            v = w[offset:offset+numel].view_as(uJ)
+            offset += numel
 
-        JtJv = JtJv/n + reg * v #average & regularize
+            Jv, = torch.autograd.grad(uJ, u, v, create_graph=True) #Jacobian vector-product
+            temp, = torch.autograd.grad(Jv, v, Jv, create_graph=True) #Jacobian.T @ Jacobian vector-product
+
+            #Accumulate JtJv for all parameters into this list
+            JtJv.append(temp)
+
+        JtJv = torch.nn.utils.parameters_to_vector(JtJv)
+        JtJv = JtJv/n + reg*JtJv #average JtJv + regularize
+
         return JtJv
 
     return grad, ggnvp 
@@ -34,24 +44,25 @@ def _make_ggnvp(f, w, reg, v=None):
 def _conjugate_gradient(ggnvp, grad, w0, max_iters):
     n_iter = 0
 
-    cost = lambda v: 0.5*v.transpose(0,1) @ (ggnvp(v)) - grad.transpose(0,1)@v
+    cost = lambda v: 0.5*v @ (ggnvp(v)) - grad@v
 
+    cost_log = torch.zeros(max_iters)
     w0.requires_grad = True
     w = w0.clone()
     r = grad - ggnvp(w)
     p = r
 
-    rs_old = r @ r.transpose(0,1)
+    rs_old = r @ r #r.T @ r
     while n_iter < max_iters:
-        n_iter += 1
-        
         Ap = ggnvp(p)
-        alpha = rs_old / (Ap @ p.transpose(0,1)) #find optimal step size
+        alpha = rs_old / (Ap @ p) #find optimal step size
 
         w.add_(alpha.item(), p) #update parameters
 
         r.sub_(alpha.item(), Ap)
-        rs_new = r @ r.transpose(0,1)
+        rs_new = r @ r
+
+        #cost_log[n_iter] = cost(w)
 
         if torch.sqrt(rs_new) < 1e-10:
             break
@@ -61,8 +72,9 @@ def _conjugate_gradient(ggnvp, grad, w0, max_iters):
         p = r + beta * p
 
         rs_old = rs_new
+        n_iter += 1
 
-    return w
+    return w, cost_log
 
 class GN_Solver(Optimizer):
 
@@ -143,8 +155,6 @@ class GN_Solver(Optimizer):
             closure (callable): A closure that reevaluates the model
                 and returns the loss
         """
-        
-        #import pdb; pdb.set_trace()
         orig_loss,err,pred = closure()
         loss = orig_loss
 
@@ -156,20 +166,19 @@ class GN_Solver(Optimizer):
         bt_alpha = group['bt_alpha']
         bt_beta = group['bt_beta']
 
-        state = self.state[self._params[0]]
-        
-        #TODO: Figure out how to use all network parameters for >1 layer
-        #w0, grad = self._gather_flat_grad(reg)
-        w0 = self._params[0]
+        u = err.clone()
+        n = err.shape[0] #batch size
+        w0 = nn.utils.parameters_to_vector(self._params) #weight parameters in vector form
+        grad_params = torch.autograd.grad(err, self._params, u, create_graph=True) #gradients
         
         #Compute Gauss-Newton vector product 
-        grad, ggnvp = _make_ggnvp(err,w0,reg) 
+        grad, ggnvp = _make_ggnvp(grad_params,u,n,reg) #return gradient in vector form + ggnvp function
         #Solve for the Conjugate Gradient Direction
-        dw = _conjugate_gradient(ggnvp, grad, torch.zeros(grad.shape), max_iter)
+        dw, cost_log = _conjugate_gradient(ggnvp, grad, torch.zeros(grad.shape), max_iter)
 
         #Perform backtracking line search
         val = loss + 0.5 * reg * torch.norm(w0)**2
-        fprime = -1*dw @ grad.transpose(0,1)
+        fprime = -1*dw @ grad
         
         self.grad_update += 1
         if backtrack > 0:
