@@ -12,16 +12,21 @@ Args:
     w: take derivative w.r.t to parameters of network
     v: vector multiply with Gauss-Newton approx
 """
-def _make_ggnvp(grad_params, u, n, reg, v=None):
+def _make_ggnvp(err, params, n, reg, idx):
+    u = err.clone()
+
+    grad_params = torch.autograd.grad(err, params, u, create_graph=True) #gradients
     grad = torch.nn.utils.parameters_to_vector(grad_params)
     grad = grad/n + reg*grad #average gradients + regularize
 
+    u = err[idx].clone()
+    grad_sketch_params = torch.autograd.grad(err[idx], params, u, create_graph=True) #sketched gradients; if no sketching, then this is equivalent to grad_params
+    
     def ggnvp(w):
         assert w.requires_grad, 'variable must have requires_grad as True'
-
         JtJv = []
         offset = 0
-        for uJ in grad_params:
+        for uJ in grad_sketch_params:
             #Separate weights into corresponding elements and then reshape into shape uJ
             numel = uJ.numel()
             v = w[offset:offset+numel].view_as(uJ)
@@ -34,7 +39,7 @@ def _make_ggnvp(grad_params, u, n, reg, v=None):
             JtJv.append(temp)
 
         JtJv = torch.nn.utils.parameters_to_vector(JtJv)
-        JtJv = JtJv/n + reg*JtJv #average JtJv + regularize
+        JtJv = JtJv/n + reg*w #average JtJv + regularize
 
         return JtJv
 
@@ -44,7 +49,7 @@ def _make_ggnvp(grad_params, u, n, reg, v=None):
 def _conjugate_gradient(ggnvp, grad, w0, max_iters):
     n_iter = 0
 
-    cost = lambda v: 0.5*v @ (ggnvp(v)) - grad@v
+    #cost = lambda v: 0.5*v @ (ggnvp(v)) - grad@v
 
     cost_log = torch.zeros(max_iters)
     w0.requires_grad = True
@@ -87,14 +92,15 @@ class GN_Solver(Optimizer):
         backtrack (int, optional):
         backtrack_param (tuple, optional): (backtrack_alpha, backtrack_beta)
         tolerance (float, optional):
+        sketch_size (int, optional): size of randomized sketching sampling matrix i.e. Number of elements to sample
 
     """
-    def __init__(self, params, lr=1, max_iter=20, reg=0.0, backtrack=50, backtrack_param = (0.2, 0.5), tolerance=1e-8):
+    def __init__(self, params, lr=1, max_iter=20, reg=0.0, backtrack=50, backtrack_param = (0.2, 0.5), tolerance=1e-8, sketch_size=None):
 
         if backtrack < 0:
             raise ValueError('Invalid backtrack amount: {}'.format(backtrack))
 
-        defaults = dict(lr=lr, max_iter=max_iter, reg=reg, backtrack=backtrack, bt_alpha=backtrack_param[0], bt_beta=backtrack_param[1])
+        defaults = dict(lr=lr, max_iter=max_iter, reg=reg, backtrack=backtrack, bt_alpha=backtrack_param[0], bt_beta=backtrack_param[1], sketch_size=sketch_size)
 
         super(GN_Solver, self).__init__(params, defaults)
 
@@ -165,14 +171,21 @@ class GN_Solver(Optimizer):
         backtrack = group['backtrack']
         bt_alpha = group['bt_alpha']
         bt_beta = group['bt_beta']
+        sketch_size = group['sketch_size']
 
-        u = err.clone()
+        #import pdb; pdb.set_trace()
         n = err.shape[0] #batch size
+        #If sketching the jacobian, randomly select [sketch_size] samples
+        if sketch_size is not None:
+            perm = torch.randperm(n)
+            idx = perm[:sketch_size]
+        else:
+            idx = torch.arange(n) #Don't sketch, use all samples
+
         w0 = nn.utils.parameters_to_vector(self._params) #weight parameters in vector form
-        grad_params = torch.autograd.grad(err, self._params, u, create_graph=True) #gradients
         
         #Compute Gauss-Newton vector product 
-        grad, ggnvp = _make_ggnvp(grad_params,u,n,reg) #return gradient in vector form + ggnvp function
+        grad, ggnvp = _make_ggnvp(err,self._params,n,reg,idx) #return gradient in vector form + ggnvp function
         #Solve for the Conjugate Gradient Direction
         dw, cost_log = _conjugate_gradient(ggnvp, grad, torch.zeros(grad.shape), max_iter)
 

@@ -20,7 +20,7 @@ parser = argparse.ArgumentParser()
 parser.add_argument('--dataset', default='mnist', type=str, help='dataset(s) to use')
 default_datasets = ['mnist']
 parser.add_argument('--two_layer', action='store_true', help='add parameter to use two-layer architecture instead of single-layer')
-parser.add_argument('--max_iter', default=30, type=int, help='max num of iterations to train on')
+parser.add_argument('--max_iter', default=20, type=int, help='max num of iterations to train on')
 parser.add_argument('--batch_size', default=60000, type=int, help='mini-batch size') 
 
 parser.add_argument('--sketch_size', default=784, type=int, help='sketch size for sketching algorithms')
@@ -109,24 +109,8 @@ def main(args):
 
     losses_gn = []
     losses_gn_sketch = []
+    losses_gn_half_sketch = []
     losses_sgd = []
-
-    #Train using SGD
-    print('Training using SGD')
-    model = Model(input_size=784, two_layer=args.two_layer) #re-init model 
-    optimizer = torch.optim.SGD(model.parameters(), lr=0.01, weight_decay=reg) 
-    time_start = time.time()
-    num_iter_updates = [0] #wrapped in list b/c integers are immutable
-    while num_iter_updates[0] < args.max_iter:
-        loss, accuracy = train_SGD(model, train_dataloader, optimizer, losses_sgd, num_iter_updates)
-
-    time_end = time.time()
-    t_solve_sgd = time_end - time_start 
-    print('Trained in {0:.3f}s'.format(t_solve_sgd))
-    loss, accuracy = test(model, test_dataloader)
-    print('Test Loss: {}, Accuracy: {}'.format(loss, accuracy))
-
-    print('-'*30)
 
     print('Training using Gauss-Newton Solver')
     #Train using Gauss-Newton solver
@@ -137,6 +121,21 @@ def main(args):
         loss, accuracy = train_GN(model, train_dataloader, optimizer, losses_gn)
     time_end = time.time()
     t_solve_gn = time_end - time_start 
+    print('Trained in {0:.3f}s'.format(t_solve_gn))
+    loss, accuracy = test(model, test_dataloader)
+    print('Test Loss: {}, Accuracy: {}'.format(loss, accuracy))
+
+    print('-'*30)
+
+    #Train using Gauss-Newton Half-sketch
+    print('Training using Gauss-Newton Half-Sketch Solver')
+    model = Model(input_size=784, two_layer=args.two_layer) #init model
+    optimizer = GN_Solver(model.parameters(), lr=1.0, reg=reg, backtrack=0, sketch_size=784)
+    time_start = time.time()
+    while optimizer.grad_update < args.max_iter:
+        loss, accuracy = train_GN(model, train_dataloader, optimizer, losses_gn_half_sketch)
+    time_end = time.time()
+    t_solve_gn_half_sketch = time_end - time_start 
     print('Trained in {0:.3f}s'.format(t_solve_gn))
     loss, accuracy = test(model, test_dataloader)
     print('Test Loss: {}, Accuracy: {}'.format(loss, accuracy))
@@ -157,17 +156,30 @@ def main(args):
     print('Trained in {0:.3f}s'.format(t_solve_gn_sketch))
     loss, accuracy = test(model, test_dataloader)
     print('Test Loss: {}, Accuracy: {}'.format(loss, accuracy))
-    
-    #TODO:
-    #Train using Gauss-Newton Half-sketch
-    
-    plt.semilogy(np.arange(len(losses_gn)) * t_solve_gn / args.max_iter, losses_gn, 'k', 
-                 np.arange(len(losses_gn_sketch)) * t_solve_gn_sketch / args.max_iter,losses_gn_sketch, 'g', 
-                 np.arange(len(losses_sgd)) * t_solve_sgd / args.max_iter, losses_sgd, 'b')
+
+    #Train using SGD
+    print('Training using SGD')
+    model = Model(input_size=784, two_layer=args.two_layer) #re-init model 
+    optimizer = torch.optim.SGD(model.parameters(), lr=0.1, weight_decay=reg) 
+    time_start = time.time()
+    num_iter_updates = [0] #wrapped in list b/c integers are immutable
+    while num_iter_updates[0] < 10:
+        loss, accuracy = train_SGD(model, train_dataloader, optimizer, losses_sgd, num_iter_updates)
+
+    time_end = time.time()
+    t_solve_sgd = time_end - time_start 
+    print('Trained in {0:.3f}s'.format(t_solve_sgd))
+    loss, accuracy = test(model, test_dataloader)
+    print('Test Loss: {}, Accuracy: {}'.format(loss, accuracy))
+
+    plt.semilogy(np.arange(len(losses_gn)) * t_solve_gn / len(losses_gn), losses_gn, 'k', 
+                 np.arange(len(losses_gn_sketch)) * t_solve_gn_sketch / len(losses_gn_sketch), losses_gn_sketch, 'g', 
+                 np.arange(len(losses_gn_half_sketch)) * t_solve_gn_half_sketch / len(losses_gn_half_sketch), losses_gn_half_sketch, 'r', 
+                 np.arange(len(losses_sgd)) * t_solve_sgd / len(losses_sgd), losses_sgd, 'b')
     plt.title('Training loss')
     plt.xlabel('Seconds')
     plt.grid(True, which='both')
-    plt.legend(['Gauss-Newton', 'Gauss-Newton Sketch', 'SGD'])
+    plt.legend(['Gauss-Newton', 'Gauss-Newton Sketch', 'Gauss-Newton Half-Sketch', 'SGD'])
     plt.show()
 
 def train_GN(model, dataloader, optimizer, all_losses):
@@ -223,9 +235,8 @@ def train_SGD(model, dataloader, optimizer, all_losses, num_iter_updates):
        acc = torch.sum((pred.squeeze(1)>0.5).float() == labels).float()/len(labels)
        accuracy.append(acc.item())
        #print('Iter: {}, Loss: {}, Accuracy: {}'.format(idx,loss.item(),acc.item()))
-
-       num_iter_updates[0] = num_iter_updates[0] + 1
-
+    
+   num_iter_updates[0] = num_iter_updates[0] + 1
    return np.mean(losses), np.mean(accuracy)
 
 #forward testing pass
