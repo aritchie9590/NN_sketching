@@ -137,17 +137,17 @@ def make_model(input_dim,output_dim,loss_type,hidden_dim = None,seed=None):
 
 ### Gauss-Newton Solver ###
 
-loss_type = 'l2'
-data = read_data(loss_type,seed=0)
+# loss_type = 'l2'
+# data = read_data(loss_type,seed=0)
 
-# loss_type = 'softmax'
-# data = read_data(loss_type,nb_classes=2, seed=0)
+loss_type = 'softmax'
+data = read_data(loss_type,nb_classes=2, seed=0)
 
 sketch_size = 784
 
 input_dim = data['X_train'].shape[1]
 hidden_dim = None         ## Use for regression
-# hidden_dim = 100             ## Use for softmax
+hidden_dim = 10             ## Use for softmax
 
 if(loss_type is 'l2'):
     output_dim = 1
@@ -159,36 +159,32 @@ model,w0 = make_model(input_dim,output_dim,loss_type,hidden_dim,seed=0)
 ITER_GN = 10
 ITER_GNHS = 30
 ITER_GNS = 20
-ITER_SGD = 50
-n_cg_iter = 20
+ITER_SGD = 100
+n_cg_iter = 100
 
-# lam = 0.0001          ## Use for softmax
-lam = 1 / data['X_train'].shape[0] ## use for l2 regression
+lam = 10 / data['X_train'].shape[0] ## use for l2 regression
 
 import gn
 import gn_sketch
 import gn_half_sketch
 import gd
 
-print("Gauss-Newton...")
-# # Gauss-Newton
-w_star_gn, loss_log_gn, val_err_gn, t_solve_gn = gn.solver(data, model, lam, w0, loss_type, ITER_GN, 100, backtrack =
-True)
-
-
+# print("Gauss-Newton...")
+# # # Gauss-Newton
+# w_star_gn, loss_log_gn, val_err_gn, t_solve_gn = gn.solver(data, model, lam, w0, loss_type, ITER_GN, 300, backtrack =
+# False)
+#
 print("Gauss-Newton Sketch...")
 # Gauss-Newton Sketch
 w_star_gns, loss_log_sketch, val_err_sketch, t_solve_sketch = gn_sketch.solver(data, model, lam, w0, loss_type,
                                                                      ITER_GNS, n_cg_iter, backtrack=False,
                                                                                sketch_size=sketch_size)
 
-
 print("Gauss-Newton Half Sketch...")
 # Gauss-Newton Half-Sketch (Iterative)
 w_star_gnhs, loss_log_hsketch, val_err_hsketch, t_solve_hsketch = gn_half_sketch.solver(data, model, lam, w0, loss_type,
                                                                      ITER_GNHS, n_cg_iter, backtrack=False,
                                                                                         sketch_size=sketch_size)
-
 
 print("SGD...")
 # SGD
