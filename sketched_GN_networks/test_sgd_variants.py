@@ -163,8 +163,6 @@ def make_model(input_dim, output_dim, loss_type, hidden_dim=None, seed=None):
     else:
         # Define two-layer network parameters
         params = [[input_dim, hidden_dim], [hidden_dim, output_dim]]
-        # params = [[input_dim, 100], [100, hidden_dim], [hidden_dim, 10], [10, output_dim]]
-        # params = [[input_dim, 100], [100,100], [100,50],[50,50], [50, 25], [25, 25], [25, 10], [10,output_dim]]
 
     model = lambda w, X: nn(w, X, params, loss_type)
     w_0 = init_weights(params, seed)
@@ -174,18 +172,20 @@ def make_model(input_dim, output_dim, loss_type, hidden_dim=None, seed=None):
 ### Gauss-Newton Solver ###
 
 # loss_type = 'l2'
-loss_type = 'softmax'
+# data = read_data(loss_type,seed=0)
 
-# data = read_data(loss_type,seed=0)                    #MNIST binary regression
-# data = readCTdata(seed=0)                               #CT regression
-data = read_data(loss_type, nb_classes=10, seed=0)    #MNIST 10 digit classification CE
+# data = readCTdata(seed=0)
+
+loss_type = 'softmax'
+data = read_data(loss_type, nb_classes=10, seed=0)
 
 sketch_size = 1000
 # sketch_size = 500
 
 input_dim = data['X_train'].shape[1]
 hidden_dim = None  ## Use for regression
-hidden_dim = 200
+# hidden_dim = 50
+hidden_dim = 10
 
 if (loss_type is 'l2'):
     output_dim = 1
@@ -198,12 +198,10 @@ ITER_GN = 5
 ITER_GNHS = 20
 ITER_GNS = 20
 ITER_SGD = 1000
-ITER_ADAM = 500
-ITER_SGD = 1000
-# n_cg_iter = 1000
+# ITER_SGD = 50
+n_cg_iter = 1000
 
-
-# lam = 10 / data['X_train'].shape[0]  ## use for l2 regression
+lam = 10 / data['X_train'].shape[0]  ## use for l2 regression
 lam = 100 / data['X_train'].shape[0]  ## use for MNIST softmax
 
 import gn
@@ -211,111 +209,60 @@ import gn_sketch
 import gn_half_sketch
 import gd
 
-# print("Gauss-Newton...")
-# n_cg_iter = 100
-# # # Gauss-Newton
-# w_star_gn, loss_log_gn, val_err_gn, t_solve_gn = gn.solver(data, model, lam, w0, loss_type, ITER_GN, n_cg_iter, backtrack =
-# False)
-
-print("Gauss-Newton Sketch...")
-n_cg_iter = 1000
-# Gauss-Newton Sketch
-w_star_gns, loss_log_sketch, val_err_sketch, t_solve_sketch = gn_sketch.solver(data, model, lam, w0, loss_type,
-                                                                               ITER_GNS, n_cg_iter, backtrack=True,
-                                                                               sketch_size=sketch_size)
-
-print("Gauss-Newton Half Sketch...")
-# Gauss-Newton Half-Sketch (Iterative)
-n_cg_iter = 100
-w_star_gnhs, loss_log_hsketch, val_err_hsketch, t_solve_hsketch = gn_half_sketch.solver(data, model, lam, w0, loss_type,
-                                                                                        ITER_GNHS, n_cg_iter,
-                                                                                        backtrack=False,
-                                                                                        sketch_size=sketch_size)
-
-# print("SGD Backtrack...")
-# # SGD
-# w_star_sgd, loss_log_back, val_err_back, t_solve_back = gd.solver(data, model, lam, w0, loss_type, ITER_SGD,
-#                                                                     stochastic=True, step='backtrack',
-#                                                                   sketch_size=sketch_size)
+print("SGD Backtrack...")
+# SGD
+w_star_sgd, loss_log_back, val_err_back, t_solve_back = gd.solver(data, model, lam, w0, loss_type, ITER_SGD,
+                                                                    stochastic=True, step='backtrack',
+                                                                  sketch_size=sketch_size)
 
 print("SGD ADAM...")
-w_star_sgd, loss_log_adam, val_err_adam, t_solve_adam = gd.solver(data, model, lam, w0, loss_type, ITER_ADAM,
-                                                                    stochastic=True, step='adam', lr = 0.01,
-                                                                  decay = 1,
+w_star_sgd, loss_log_adam, val_err_adam, t_solve_adam = gd.solver(data, model, lam, w0, loss_type, ITER_SGD,
+                                                                    stochastic=True, step='adam',
                                                                   sketch_size=sketch_size)
 
 
-print("SGD...")
+print("SGD Diminish...")
 w_star_sgd, loss_log_const, val_err_const, t_solve_const = gd.solver(data, model, lam, w0, loss_type, ITER_SGD,
-                                                                    stochastic=True, step='constant', lr = 1, decay = 1,
+                                                                    stochastic=True, step='constant',
                                                                   sketch_size=sketch_size)
+
 
 plt.subplot(2, 1, 1)
-# plt.semilogy(np.arange(len(loss_log_gn)), loss_log_gn, 'k',
 plt.semilogy(
-    np.arange(len(loss_log_sketch)), loss_log_sketch, 'g',
-    np.arange(len(loss_log_hsketch)), loss_log_hsketch,'r',
-    # np.arange(len(loss_log_back)), loss_log_back, 'b',
-    np.arange(len(loss_log_adam)), loss_log_adam, 'c',
-    np.arange(len(loss_log_const)), loss_log_const, 'm'
-)
+    np.arange(len(loss_log_back)), loss_log_back, 'g', np.arange(len(loss_log_adam)), loss_log_adam,
+    'r', np.arange(len(loss_log_const)), loss_log_const, 'b')
 plt.title('Training loss')
 plt.grid(True, which='both')
-# plt.legend(['Gauss-Newton', 'Gauss-Newton-Sketch','Gauss-Newton Half-Sketch','SGD'])
-# plt.legend(['Gauss-Newton-Sketch','Gauss-Newton Half-Sketch','SGD'])
+plt.legend(['Backtracking Line Search','ADAM','Diminish'])
 
 plt.subplot(2, 1, 2)
-# plt.semilogy(np.arange(len(val_err_gn)), val_err_gn, 'k',
 plt.semilogy(
-    np.arange(len(val_err_sketch)), val_err_sketch, 'g',
-    np.arange(len(val_err_hsketch)), val_err_hsketch, 'r',
-    # np.arange(len(val_err_back)), val_err_back, 'b',
-    np.arange(len(val_err_adam)), val_err_adam, 'c',
-    np.arange(len(val_err_const)), val_err_const, 'm'
-)
+    np.arange(len(val_err_back)), val_err_back, 'g',
+    np.arange(len(val_err_adam)), val_err_adam, 'r',
+    np.arange(len(val_err_const)), val_err_const, 'b')
 plt.xlabel('Iteration')
 plt.title('Validation Loss')
 plt.grid(True, which='both')
-# plt.legend(['Gauss-Newton Half-Sketch','ADAM'])
-# plt.legend(['Gauss-Newton-Sketch','Gauss-Newton Half-Sketch','ADAM'])
-plt.legend(['Gauss-Newton-Sketch', 'Gauss-Newton Half-Sketch','ADAM','Constant'])
-# plt.legend(['Gauss-Newton-Sketch', 'Gauss-Newton Half-Sketch', 'SGD-Backtrack','ADAM','Diminish'])
-# plt.legend(['Gauss-Newton','Gauss-Newton-Sketch', 'Gauss-Newton Half-Sketch', 'SGD-Backtrack','ADAM','Diminish'])
 plt.show()
 
 plt.subplot(2, 1, 1)
 # plt.semilogy(np.arange(len(loss_log_gn)) * t_solve_gn / ITER_GN, loss_log_gn, 'k',
 plt.semilogy(
-    np.arange(len(loss_log_sketch)) * t_solve_sketch / ITER_GNS, loss_log_sketch, 'g',
-    np.arange(len(loss_log_hsketch)) * t_solve_hsketch / ITER_GNHS, loss_log_hsketch, 'r',
-    # np.arange(len(loss_log_back)) * t_solve_back / ITER_SGD, loss_log_back, 'b',
-    np.arange(len(loss_log_adam)) * t_solve_adam / ITER_ADAM, loss_log_adam, 'c',
-    np.arange(len(loss_log_const)) * t_solve_const / ITER_SGD, loss_log_const, 'm'
-)
+    np.arange(len(loss_log_back)) * t_solve_back / ITER_SGD, loss_log_back, 'g', np.arange(len(
+        loss_log_adam)) * t_solve_adam / ITER_SGD, loss_log_adam, 'r', np.arange(len(
+        loss_log_const)) * t_solve_const / ITER_SGD, loss_log_const, 'b')
 plt.title('Training loss')
 plt.grid(True, which='both')
-# plt.legend(['Gauss-Newton Half-Sketch','ADAM'])
-# plt.legend(['Gauss-Newton-Sketch','Gauss-Newton Half-Sketch','ADAM'])
-# plt.legend(['Gauss-Newton-Sketch', 'Gauss-Newton Half-Sketch', 'SGD-Backtrack','ADAM','Diminish'])
-# plt.legend(['Gauss-Newton','Gauss-Newton-Sketch', 'Gauss-Newton Half-Sketch', 'SGD-Backtrack','ADAM','Diminish'])
+plt.legend(['Backtracking Line Search','ADAM','Diminish'])
 
 plt.subplot(2, 1, 2)
-# plt.semilogy(np.arange(len(val_err_gn)) * t_solve_gn / ITER_GN, val_err_gn, 'k',
 plt.semilogy(
-    np.arange(len(val_err_sketch)) * t_solve_sketch / ITER_GNS, val_err_sketch, 'g',
-    np.arange(len(val_err_hsketch)) * t_solve_hsketch / ITER_GNHS, val_err_hsketch, 'r',
-    # np.arange(len(val_err_back)) * t_solve_back / ITER_SGD, val_err_back, 'b',
-    np.arange(len(val_err_adam)) * t_solve_adam / ITER_ADAM, val_err_adam, 'c',
-    np.arange(len(val_err_const)) * t_solve_const / ITER_SGD, val_err_const, 'm'
-)
+    np.arange(len(val_err_back)) * t_solve_back / ITER_SGD, val_err_back, 'g', np.arange(len(
+        val_err_adam)) * t_solve_adam / ITER_SGD, val_err_adam, 'r', np.arange(len(
+        val_err_const)) * t_solve_const / ITER_SGD, val_err_const, 'b')
 plt.xlabel('Seconds')
 plt.title('Validation loss')
 plt.grid(True, which='both')
-# plt.legend(['Gauss-Newton Half-Sketch','ADAM'])
-# plt.legend(['Gauss-Newton-Sketch','Gauss-Newton Half-Sketch','ADAM'])
-plt.legend(['Gauss-Newton-Sketch', 'Gauss-Newton Half-Sketch','ADAM','Constant'])
-# plt.legend(['Gauss-Newton-Sketch', 'Gauss-Newton Half-Sketch', 'SGD-Backtrack','ADAM','Diminish'])
-# plt.legend(['Gauss-Newton','Gauss-Newton-Sketch', 'Gauss-Newton Half-Sketch', 'SGD-Backtrack','ADAM','Diminish'])
 plt.show()
 
 print("I'm done")
