@@ -12,15 +12,14 @@ Args:
     w: take derivative w.r.t to parameters of network
     v: vector multiply with Gauss-Newton approx
 """
-def _make_ggnvp(err, params, n, reg, idx):
+def _make_ggnvp(err, params, w0, n, reg, idx):
     u = err.clone()
 
     grad_params = torch.autograd.grad(err, params, u, create_graph=True) #gradients
     grad = torch.nn.utils.parameters_to_vector(grad_params)
-    grad = grad/n + reg*grad #average gradients + regularize
+    grad = grad/n + reg*w0 #average gradients + regularize
 
-    u = err[idx].clone()
-    grad_sketch_params = torch.autograd.grad(err[idx], params, u, create_graph=True) #sketched gradients; if no sketching, then this is equivalent to grad_params
+    grad_sketch_params = torch.autograd.grad(err[idx], params, u[idx], create_graph=True) #sketched gradients; if no sketching, then this is equivalent to grad_params
     
     def ggnvp(w):
         assert w.requires_grad, 'variable must have requires_grad as True'
@@ -176,16 +175,16 @@ class GN_Solver(Optimizer):
         #import pdb; pdb.set_trace()
         n = err.shape[0] #batch size
         #If sketching the jacobian, randomly select [sketch_size] samples
+        
         if sketch_size is not None:
-            perm = torch.randperm(n)
-            idx = perm[:sketch_size]
+            idx = torch.randperm(n)[:sketch_size]
         else:
             idx = torch.arange(n) #Don't sketch, use all samples
-
+       
         w0 = nn.utils.parameters_to_vector(self._params) #weight parameters in vector form
         
         #Compute Gauss-Newton vector product 
-        grad, ggnvp = _make_ggnvp(err,self._params,n,reg,idx) #return gradient in vector form + ggnvp function
+        grad, ggnvp = _make_ggnvp(err,self._params,w0,n,reg,idx) #return gradient in vector form + ggnvp function
         #Solve for the Conjugate Gradient Direction
         dw, cost_log = _conjugate_gradient(ggnvp, grad, torch.zeros(grad.shape), max_iter)
 
