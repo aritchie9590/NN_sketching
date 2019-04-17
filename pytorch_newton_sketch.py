@@ -32,8 +32,8 @@ parser.set_defaults(cuda=False)
 parser.set_defaults(two_layer=False)
 args = parser.parse_args()
 
-torch.manual_seed(0)
-np.random.seed(0)
+torch.manual_seed(123)
+np.random.seed(123)
 
 #simple feed-forward neural network
 class Model(nn.Module):
@@ -105,7 +105,7 @@ def main(args):
     train_dataset, test_dataset, num_train = get_datasets(args)
     train_dataloader = DataLoader(train_dataset, batch_size=args.batch_size, shuffle=True)
     test_dataloader = DataLoader(test_dataset, batch_size=args.batch_size, shuffle=True)
-    reg = 1/num_train 
+    reg = 10/num_train 
 
     losses_gn = []
     losses_gn_sketch = []
@@ -130,7 +130,7 @@ def main(args):
     #Train using Gauss-Newton Half-sketch
     print('Training using Gauss-Newton Half-Sketch Solver')
     model = Model(input_size=784, two_layer=args.two_layer) #init model
-    optimizer = GN_Solver(model.parameters(), lr=1.0, reg=reg, backtrack=0, sketch_size=784)
+    optimizer = GN_Solver(model.parameters(), lr=1.0, reg=reg, backtrack=0, sketch_size=args.sketch_size)
     time_start = time.time()
     while optimizer.grad_update < args.max_iter:
         loss, accuracy = train_GN(model, train_dataloader, optimizer, losses_gn_half_sketch)
@@ -160,10 +160,10 @@ def main(args):
     #Train using SGD
     print('Training using SGD')
     model = Model(input_size=784, two_layer=args.two_layer) #re-init model 
-    optimizer = torch.optim.SGD(model.parameters(), lr=0.1, weight_decay=reg) 
+    optimizer = torch.optim.SGD(model.parameters(), lr=0.1, weight_decay=0.0001) 
     time_start = time.time()
     num_iter_updates = [0] #wrapped in list b/c integers are immutable
-    while num_iter_updates[0] < 10:
+    while num_iter_updates[0] < args.max_iter:
         loss, accuracy = train_SGD(model, train_dataloader, optimizer, losses_sgd, num_iter_updates)
 
     time_end = time.time()
@@ -211,7 +211,7 @@ def train_GN(model, dataloader, optimizer, all_losses):
        all_losses.append(loss.item())
        acc = torch.sum((pred.squeeze(1)>0.5).float() == labels).float()/len(labels)
        accuracy.append(acc.item())
-       #print('Iter: {}, Loss: {}, Accuracy: {}'.format(optimizer.grad_update,loss.item(),acc.item()))
+       print('Iter: {}, Loss: {}, Accuracy: {}'.format(optimizer.grad_update,loss.item(),acc.item()))
 
    return np.mean(losses), np.mean(accuracy)
 
