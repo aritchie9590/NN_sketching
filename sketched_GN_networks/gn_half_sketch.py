@@ -50,8 +50,8 @@ def solver(data, f, lam, w0, loss_type, ITERNEWTON, n_cgiter=None, backtrack=Tru
     for iter in range(0, ITERNEWTON):
 
 
-        # sample_idx = np.random.choice(n,sketch_size,False)
-        sample_idx = randp[sketch_size * (iter) + 1: sketch_size * (iter + 1) + 1]
+        sample_idx = np.random.choice(n,sketch_size,False)
+        # sample_idx = randp[sketch_size * (iter) + 1: sketch_size * (iter + 1) + 1]
         Xs = X_train[sample_idx, :]
 
         vjp = make_vjp(f)(w, X_train)[0]
@@ -73,7 +73,7 @@ def solver(data, f, lam, w0, loss_type, ITERNEWTON, n_cgiter=None, backtrack=Tru
         #     pad[sample_idx] = jvp(v)[1]
         #     return vjp(pad) / n + lam * v
 
-        ggnvp_fxn = lambda v: vjp_sketch(jvp(v)[1]) / n + lam*v
+        ggnvp_fxn = lambda v: vjp_sketch(jvp(v)[1]) / n + lam * v
 
         subprob = lambda v: g.T @ v + 0.5 * v.T @ ggnvp_fxn(v)
         subgrad = lambda v: g + ggnvp_fxn(v)
@@ -109,6 +109,8 @@ def solver(data, f, lam, w0, loss_type, ITERNEWTON, n_cgiter=None, backtrack=Tru
                     print("Reached maximum backtracking")
                     break
         else:
+            # t = 0.01 / (iter + 1)
+            # t = 0.01
             t = 1 / (iter + 1)
 
         # Update the NN params
@@ -130,7 +132,7 @@ def solver(data, f, lam, w0, loss_type, ITERNEWTON, n_cgiter=None, backtrack=Tru
                 abs(np.argmax(softmax(f(w, X_val)), axis=1) - np.argmax(y_val, axis=1)) > 0,
                 axis=0) / y_val.shape[0]
 
-        print("Loss function: {:.5f}, Validation error: {:.5f}".format(loss, val_err[iter + 1]))
+        print("Iteration {:.1f}: Loss function: {:.5f}, Validation error: {:.5f}".format(iter,loss, val_err[iter + 1]))
 
         if abs(decr) < NTOL:
             loss_log = loss_log[:iter]

@@ -9,7 +9,8 @@ import autograd.numpy as ap
 from autograd import grad
 from autograd import elementwise_grad
 
-def solver(data, f, lam, w0, loss_type, ITERNEWTON, stochastic = True, backtrack=True, sketch_size=None):
+def solver(data, f, lam, w0, loss_type, ITERNEWTON, stochastic = True, step='backtrack',lr = 1,
+           decay = 1, sketch_size=None):
 
     X_train = data['X_train']
     y_train = data['y_train']
@@ -37,7 +38,6 @@ def solver(data, f, lam, w0, loss_type, ITERNEWTON, stochastic = True, backtrack
         loss_log[0] = 0.5 * np.linalg.norm(f(w, X_train) - y_train) ** 2 / n + lam * np.linalg.norm(w) ** 2 / 2
         val_err[0] = 0.5 * np.linalg.norm(f(w, X_val) - y_val) ** 2 / n + lam * np.linalg.norm(w) ** 2 / 2
 
-
     else:  # softmax
         loss_log[0] = 0.5 * np.sum(np.linalg.norm(softmax(f(w, X_train)) - y_train,axis=1)**2) / n + lam * \
                       np.linalg.norm(
@@ -46,12 +46,20 @@ def solver(data, f, lam, w0, loss_type, ITERNEWTON, stochastic = True, backtrack
                             axis=0) / y_val.shape[0]
 
     randperm = lambda n: np.random.permutation(n)
-    randp = np.hstack((randperm(n), randperm(n), randperm(n), randperm(n), randperm(n), randperm(n), randperm(n), \
-                       randperm(n),
-                       randperm(n), randperm(n), randperm(n), randperm(n)))
+
+    randp = []
+    repeats = np.ceil(sketch_size * ITERNEWTON / n)
+    for i in range(0,25):
+        randp = np.hstack((randp,randperm(n))).astype(int)
 
     print("Loss function: {:.5f}, Validation error: {:.5f}".format(loss_log[0], val_err[0]))
     start = time.time()
+
+    beta1 = 0.9
+    beta2 = 0.999
+    alpha = lr
+    eps = 1e-8
+
     for iter in range(0, ITERNEWTON):
 
         if(stochastic):
@@ -87,7 +95,7 @@ def solver(data, f, lam, w0, loss_type, ITERNEWTON, stochastic = True, backtrack
 
         fprime = grads.T @ dw
 
-        if(backtrack):
+        if(step is 'backtrack'):
 
             if(stochastic):
 
@@ -135,13 +143,40 @@ def solver(data, f, lam, w0, loss_type, ITERNEWTON, stochastic = True, backtrack
                     if (bts > 50):
                         print("Reached maximum backtracking iterations")
                         break
-        else:
+            w = w + t * dw
+        elif(step is 'constant'):
             # t = 10 / (iter + 1)
-            t = 100 / (iter + 1)
+            # t = 100 / (iter + 1)
+            # t = 0.01 / (iter + 1)
+            if(iter < 1):
+                t = lr
+
+            t = decay*t
+            w = w + t * dw
+        else:
+            if(iter%200 == 0):
+                # alpha /= 10
+                # t = 0
+                # m = np.zeros(len(dw))
+                # v = np.zeros(len(dw))
+                pass
+            if(iter < 1):
+                t = 0
+                # alpha /= 10
+                m = np.zeros(len(dw))
+                v = np.zeros(len(dw))
+
+            t += 1
+            alpha = decay * alpha
+            m = beta1 * m + (1 - beta1)*grads
+            v = beta2 * v + (1 - beta2)*grads**2
+            mhat = m / (1 - beta1**t)
+            vhat = v / (1 - beta2**t)
+            w = w - alpha*mhat/(np.sqrt(vhat) + eps)
 
         ## Update the NN params
 
-        w = w + t * dw
+        # w = w + t * dw
         w_log[:,iter + 1] = w
 
 
@@ -166,7 +201,8 @@ def solver(data, f, lam, w0, loss_type, ITERNEWTON, stochastic = True, backtrack
             w_log = w_log[:,:iter]
             break
 
-        print("Loss function: {:.5f}, Validation error: {:.5f}".format(loss,val_err[iter+1]))
+        if(iter % 100==0):
+            print("Iteration: {:.1f}: Loss function: {:.5f}, Validation error: {:.5f}".format(iter,loss,val_err[iter+1]))
 
     end = time.time()
     t_solve = end - start

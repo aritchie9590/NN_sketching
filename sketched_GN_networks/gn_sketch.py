@@ -131,7 +131,7 @@ def solver(data, f, lam, w0, loss_type, ITERNEWTON, n_cgiter=None, backtrack=Tru
             w_log = w_log[:,:iter]
             break
 
-        print("Loss function: {:.5f}, Validation error: {:.5f}".format(loss, val_err[iter + 1]))
+        print("Iteration {:.1f}: Loss function: {:.5f}, Validation error: {:.5f}".format(iter, loss,val_err[iter + 1]))
 
     end = time.time()
     t_solve = end - start
