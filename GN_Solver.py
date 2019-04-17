@@ -182,10 +182,14 @@ class GN_Solver(Optimizer):
         else:
             idx = torch.arange(n) #Don't sketch, use all samples
 
+        #flat_grad = self._gather_flat_grad()
+        #abs_grad_sum = flat_grad.abs().sum()
+        
         w0 = nn.utils.parameters_to_vector(self._params) #weight parameters in vector form
         
         #Compute Gauss-Newton vector product 
         grad, ggnvp = _make_ggnvp(err,self._params,n,reg,idx) #return gradient in vector form + ggnvp function
+        
         #Solve for the Conjugate Gradient Direction
         dw, cost_log = _conjugate_gradient(ggnvp, grad, torch.zeros(grad.shape), max_iter)
 
