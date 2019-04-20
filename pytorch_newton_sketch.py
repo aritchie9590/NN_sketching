@@ -65,6 +65,27 @@ class Model(nn.Module):
 
         return out
 
+class CNN(nn.Module):
+    def __init__(self, output_size):
+        super(CNN, self).__init__()
+        self.layer1 = nn.Sequential(nn.Conv2d(1,16,kernel_size=5,padding=2), 
+                nn.ReLU(), 
+                nn.MaxPool2d(2)) #Convolution layer retains the same size, max pooling divides dimension by two
+
+        self.layer2 = nn.Sequential(nn.Conv2d(16,32,kernel_size=5,padding=2),
+                nn.ReLU(),
+                nn.MaxPool2d(2)) #Convolutional layer retains the same size, max pooling divides dimension by two
+
+        self.fc = nn.Linear(7*7*32, output_size) #Take output volume and multiply by depth, map to 10 output classes
+	
+    def forward(self, x):
+        out = self.layer1(x)
+        out = self.layer2(out)
+
+        out = out.view(out.size(0),-1)
+        out = self.fc(out)
+        return out
+
 #We will only perform binary classification between two labels
 def filter_class_labels(dataset):
     #Filter out all digits except these two
@@ -105,16 +126,18 @@ def main(args):
     train_dataset, test_dataset, num_train = get_datasets(args)
     train_dataloader = DataLoader(train_dataset, batch_size=args.batch_size, shuffle=True)
     test_dataloader = DataLoader(test_dataset, batch_size=args.batch_size, shuffle=True)
-    reg = 10/num_train 
+    reg = 1/num_train 
 
     losses_gn = []
     losses_gn_sketch = []
     losses_gn_half_sketch = []
     losses_sgd = []
+    losses_adam = []
 
     print('Training using Gauss-Newton Solver')
     #Train using Gauss-Newton solver
-    model = Model(input_size=784, two_layer=args.two_layer) #init model
+    #model = Model(input_size=784, two_layer=args.two_layer) #init model
+    model = CNN(output_size=1)
     optimizer = GN_Solver(model.parameters(), lr=1.0, reg=reg, backtrack=0)
     time_start = time.time()
     while optimizer.grad_update < args.max_iter:
@@ -129,7 +152,8 @@ def main(args):
 
     #Train using Gauss-Newton Half-sketch
     print('Training using Gauss-Newton Half-Sketch Solver')
-    model = Model(input_size=784, two_layer=args.two_layer) #init model
+    #model = Model(input_size=784, two_layer=args.two_layer) #init model
+    model = CNN(output_size=1)
     optimizer = GN_Solver(model.parameters(), lr=1.0, reg=reg, backtrack=0, sketch_size=args.sketch_size)
     time_start = time.time()
     while optimizer.grad_update < args.max_iter:
@@ -146,7 +170,8 @@ def main(args):
     #Train using Gauss-Newton Sketch 
     #The sketch will be just a sample of the data, so we'll opt to use a mini-batch of sketch size
     train_dataloader = DataLoader(train_dataset, batch_size=args.sketch_size, shuffle=True)
-    model = Model(input_size=784, two_layer=args.two_layer) #init model
+    #model = Model(input_size=784, two_layer=args.two_layer) #init model
+    model = CNN(output_size=1)
     optimizer = GN_Solver(model.parameters(), lr=1.0, reg=reg, backtrack=0)
     time_start = time.time()
     while optimizer.grad_update < args.max_iter:
@@ -159,8 +184,10 @@ def main(args):
 
     #Train using SGD
     print('Training using SGD')
-    model = Model(input_size=784, two_layer=args.two_layer) #re-init model 
-    optimizer = torch.optim.SGD(model.parameters(), lr=0.1, weight_decay=0.0001) 
+    train_dataloader = DataLoader(train_dataset, batch_size=256, shuffle=True)
+    #model = Model(input_size=784, two_layer=args.two_layer) #re-init model 
+    model = CNN(output_size=1)
+    optimizer = torch.optim.SGD(model.parameters(), lr=0.01) 
     time_start = time.time()
     num_iter_updates = [0] #wrapped in list b/c integers are immutable
     while num_iter_updates[0] < args.max_iter:
@@ -172,14 +199,31 @@ def main(args):
     loss, accuracy = test(model, test_dataloader)
     print('Test Loss: {}, Accuracy: {}'.format(loss, accuracy))
 
+    #Train using Adam
+    print('Training using Adam')
+    #model = Model(input_size=784, two_layer=args.two_layer) #re-init model 
+    model = CNN(output_size=1)
+    optimizer = torch.optim.Adam(model.parameters(), lr=0.01) 
+    time_start = time.time()
+    num_iter_updates = [0] #wrapped in list b/c integers are immutable
+    while num_iter_updates[0] < args.max_iter:
+        loss, accuracy = train_SGD(model, train_dataloader, optimizer, losses_adam, num_iter_updates)
+
+    time_end = time.time()
+    t_solve_adam = time_end - time_start 
+    print('Trained in {0:.3f}s'.format(t_solve_adam))
+    loss, accuracy = test(model, test_dataloader)
+    print('Test Loss: {}, Accuracy: {}'.format(loss, accuracy))
+    
     plt.semilogy(np.arange(len(losses_gn)) * t_solve_gn / len(losses_gn), losses_gn, 'k', 
                  np.arange(len(losses_gn_sketch)) * t_solve_gn_sketch / len(losses_gn_sketch), losses_gn_sketch, 'g', 
                  np.arange(len(losses_gn_half_sketch)) * t_solve_gn_half_sketch / len(losses_gn_half_sketch), losses_gn_half_sketch, 'r', 
-                 np.arange(len(losses_sgd)) * t_solve_sgd / len(losses_sgd), losses_sgd, 'b')
+                 np.arange(len(losses_sgd)) * t_solve_sgd / len(losses_sgd), losses_sgd, 'b',
+                 np.arange(len(losses_adam)) * t_solve_adam / len(losses_adam), losses_adam, 'c')
     plt.title('Training loss')
     plt.xlabel('Seconds')
     plt.grid(True, which='both')
-    plt.legend(['Gauss-Newton', 'Gauss-Newton Sketch', 'Gauss-Newton Half-Sketch', 'SGD'])
+    plt.legend(['Gauss-Newton', 'Gauss-Newton Sketch', 'Gauss-Newton Half-Sketch', 'SGD', 'Adam'])
     plt.show()
 
 def train_GN(model, dataloader, optimizer, all_losses):
@@ -192,7 +236,7 @@ def train_GN(model, dataloader, optimizer, all_losses):
            break
 
        images, labels = data
-       images = images.view(-1, 28*28*1) #reshape image to vector
+       #images = images.view(-1, 28*28*1) #reshape image to vector
        labels = labels.float()
        
        #Custom function b/c cost may need to be evaluated several times for backtracking
@@ -221,7 +265,7 @@ def train_SGD(model, dataloader, optimizer, all_losses, num_iter_updates):
    
    for idx, data in enumerate(dataloader):
        images, labels = data
-       images = images.view(-1, 28*28*1) #reshape image to vector
+       #images = images.view(-1, 28*28*1) #reshape image to vector
        labels = labels.float()
        
        optimizer.zero_grad()
@@ -235,7 +279,7 @@ def train_SGD(model, dataloader, optimizer, all_losses, num_iter_updates):
        acc = torch.sum((pred.squeeze(1)>0.5).float() == labels).float()/len(labels)
        accuracy.append(acc.item())
        #print('Iter: {}, Loss: {}, Accuracy: {}'.format(idx,loss.item(),acc.item()))
-    
+       
    num_iter_updates[0] = num_iter_updates[0] + 1
    return np.mean(losses), np.mean(accuracy)
 
