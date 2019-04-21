@@ -45,14 +45,17 @@ def _make_ggnvp(err, params, w0, n, reg, idx):
     return grad, ggnvp 
 
 #solve for optimal step direction using the Conjugate Gradient Descent method
-def _conjugate_gradient(ggnvp, grad, w0, max_iters):
+def _conjugate_gradient(ggnvp, grad, max_iters):
     n_iter = 0
 
     #cost = lambda v: 0.5*v @ (ggnvp(v)) - grad@v
 
     cost_log = torch.zeros(max_iters)
-    w0.requires_grad = True
-    w = w0.clone()
+    device = grad.get_device()
+    w0 = torch.zeros(grad.shape).to(device)
+    w0.requires_grad = True 
+
+    w = w0.clone() #not necessary, but in-place operations can't be done on leaf variables
     r = grad - ggnvp(w)
     p = r
 
@@ -186,7 +189,7 @@ class GN_Solver(Optimizer):
         #Compute Gauss-Newton vector product 
         grad, ggnvp = _make_ggnvp(err,self._params,w0,n,reg,idx) #return gradient in vector form + ggnvp function
         #Solve for the Conjugate Gradient Direction
-        dw, cost_log = _conjugate_gradient(ggnvp, grad, torch.zeros(grad.shape), max_iter)
+        dw, cost_log = _conjugate_gradient(ggnvp, grad,max_iter)
 
         #Perform backtracking line search
         val = loss + 0.5 * reg * torch.norm(w0)**2

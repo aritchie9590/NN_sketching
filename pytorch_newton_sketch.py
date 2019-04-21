@@ -19,8 +19,9 @@ parser = argparse.ArgumentParser()
 #settings
 parser.add_argument('--dataset', default='mnist', type=str, help='dataset(s) to use')
 default_datasets = ['mnist']
-parser.add_argument('--two_layer', action='store_true', help='add parameter to use two-layer architecture instead of single-layer')
-parser.add_argument('--max_iter', default=20, type=int, help='max num of iterations to train on')
+parser.add_argument('--model', default='single_layer', type=str, help='select the model to use')
+default_models = ['one_layer', 'two_layer', 'cnn']
+parser.add_argument('--max_iter', default=10, type=int, help='max num of iterations to train on')
 parser.add_argument('--batch_size', default=60000, type=int, help='mini-batch size') 
 
 parser.add_argument('--sketch_size', default=784, type=int, help='sketch size for sketching algorithms')
@@ -40,7 +41,7 @@ device = 'cuda' if args.cuda else 'cpu'
 #simple feed-forward neural network
 class Model(nn.Module):
 
-    def __init__(self, input_size=784, hidden_dim=200, output_dim=1, two_layer=False):
+    def __init__(self, input_size=784, hidden_dim=200, output_dim=1):
         super().__init__()
 
         self.single_layer = nn.Sequential(
@@ -52,9 +53,9 @@ class Model(nn.Module):
                 nn.Sigmoid(), #Or ReLU()
                 nn.Linear(hidden_dim, 1),
                 nn.Sigmoid())
-
+        
         #Set-up feed-forward network as two layer or single layer
-        if two_layer:
+        if args.model == 'two_layer':
             self.ff_network = self.two_layer
             self.single_layer = None
         else:
@@ -63,7 +64,6 @@ class Model(nn.Module):
 
     def forward(self, x):
         out = self.ff_network(x)
-        #out = self.single_layer(x)
 
         return out
 
@@ -136,10 +136,14 @@ def main(args):
     losses_sgd = []
     losses_adam = []
 
+    selected_model = args.model
+
     print('Training using Gauss-Newton Solver')
     #Train using Gauss-Newton solver
-    #model = Model(input_size=784, two_layer=args.two_layer).to(device) #init model
-    model = CNN(output_size=1).to(device)
+    if selected_model == 'cnn':
+        model = CNN(output_size=1).to(device)
+    else:
+        model = Model(input_size=784).to(device) #init model
     optimizer = GN_Solver(model.parameters(), lr=1.0, reg=reg, backtrack=0)
     time_start = time.time()
     while optimizer.grad_update < args.max_iter:
@@ -151,17 +155,20 @@ def main(args):
     print('Test Loss: {}, Accuracy: {}'.format(loss, accuracy))
 
     print('-'*30)
+
     #Train using Gauss-Newton Half-sketch
     print('Training using Gauss-Newton Half-Sketch Solver')
-    #model = Model(input_size=784, two_layer=args.two_layer).to(device) #init model
-    model = CNN(output_size=1).to(device)
+    if selected_model == 'cnn':
+        model = CNN(output_size=1).to(device)
+    else:
+        model = Model(input_size=784).to(device) #init model
     optimizer = GN_Solver(model.parameters(), lr=1.0, reg=reg, backtrack=0, sketch_size=args.sketch_size)
     time_start = time.time()
     while optimizer.grad_update < args.max_iter:
         loss, accuracy = train_GN(model, train_dataloader, optimizer, losses_gn_half_sketch)
     time_end = time.time()
     t_solve_gn_half_sketch = time_end - time_start 
-    print('Trained in {0:.3f}s'.format(t_solve_gn))
+    print('Trained in {0:.3f}s'.format(t_solve_gn_half_sketch))
     loss, accuracy = test(model, test_dataloader)
     print('Test Loss: {}, Accuracy: {}'.format(loss, accuracy))
 
@@ -171,8 +178,10 @@ def main(args):
     #Train using Gauss-Newton Sketch 
     #The sketch will be just a sample of the data, so we'll opt to use a mini-batch of sketch size
     train_dataloader = DataLoader(train_dataset, batch_size=args.sketch_size, shuffle=True)
-    #model = Model(input_size=784, two_layer=args.two_layer).to(device) #init model
-    model = CNN(output_size=1).to(device)
+    if selected_model == 'cnn':
+        model = CNN(output_size=1).to(device)
+    else:
+        model = Model(input_size=784).to(device) #init model
     optimizer = GN_Solver(model.parameters(), lr=1.0, reg=reg, backtrack=0)
     time_start = time.time()
     while optimizer.grad_update < args.max_iter:
@@ -186,8 +195,10 @@ def main(args):
     #Train using SGD
     print('Training using SGD')
     train_dataloader = DataLoader(train_dataset, batch_size=256, shuffle=True)
-    #model = Model(input_size=784, two_layer=args.two_layer).to(device) #re-init model 
-    model = CNN(output_size=1).to(device)
+    if selected_model == 'cnn':
+        model = CNN(output_size=1).to(device)
+    else:
+        model = Model(input_size=784).to(device) #re-init model 
     optimizer = torch.optim.SGD(model.parameters(), lr=0.01) 
     time_start = time.time()
     num_iter_updates = [0] #wrapped in list b/c integers are immutable
@@ -202,8 +213,10 @@ def main(args):
 
     #Train using Adam
     print('Training using Adam')
-    #model = Model(input_size=784, two_layer=args.two_layer).to(device) #re-init model 
-    model = CNN(output_size=1).to(device)
+    if selected_model == 'cnn':
+        model = CNN(output_size=1).to(device)
+    else:
+       model = Model(input_size=784).to(device) #re-init model 
     optimizer = torch.optim.Adam(model.parameters(), lr=0.01) 
     time_start = time.time()
     num_iter_updates = [0] #wrapped in list b/c integers are immutable
@@ -237,7 +250,8 @@ def train_GN(model, dataloader, optimizer, all_losses):
             break
 
         images, labels = data
-        #images = images.view(-1, 28*28*1) #reshape image to vector
+        if not args.model == 'cnn':
+            images = images.view(-1, 28*28*1) #reshape image to vector
         labels = labels.float()
 
         images = images.to(device)
@@ -259,7 +273,7 @@ def train_GN(model, dataloader, optimizer, all_losses):
         acc = torch.sum((pred.squeeze(1)>0.5).float() == labels).float()/len(labels)
         accuracy.append(acc.item())
         
-        #print('Iter: {}, Loss: {}, Accuracy: {}'.format(optimizer.grad_update,loss.item(),acc.item()))
+        print('Iter: {}, Loss: {}, Accuracy: {}'.format(optimizer.grad_update,loss.item(),acc.item()))
     return np.mean(losses), np.mean(accuracy)
 
 def train_SGD(model, dataloader, optimizer, all_losses, num_iter_updates):
@@ -268,7 +282,8 @@ def train_SGD(model, dataloader, optimizer, all_losses, num_iter_updates):
 
     for idx, data in enumerate(dataloader):
         images, labels = data
-        #images = images.view(-1, 28*28*1) #reshape image to vector
+        if not args.model == 'cnn':
+            images = images.view(-1, 28*28*1) #reshape image to vector
         labels = labels.float()
 
         images = images.to(device)
@@ -298,7 +313,8 @@ def test(model, dataloader):
 
     for idx, data in enumerate(dataloader):
         images, labels = data
-        #images = images.view(-1, 28*28*1)
+        if not args.model == 'cnn':
+            images = images.view(-1, 28*28*1) #reshape image to vector
         labels = labels.float()
 
         images = images.to(device)
