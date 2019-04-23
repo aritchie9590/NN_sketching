@@ -111,19 +111,18 @@ class VGG(nn.Module):
         
         self.fc = nn.Sequential(
             # TODO: fully-connected layer (64->64)
-            nn.Sigmoid(),
+            nn.ReLU(),
             nn.Linear(16,16),
-            nn.Sigmoid(),
+            nn.ReLU(),
             # TODO: fully-connected layer (64->10)
-            nn.Linear(16, 1),
-            nn.Sigmoid()
+            nn.Linear(16, 2)
+            #nn.Sigmoid()
             #nn.Softmax()
         )
 
 
     def forward(self, x):
         x = self.conv(x)
-        print(x.shape)
         x = x.view(-1, 16)
         x = self.fc(x)
         return x
@@ -133,21 +132,21 @@ def filter_class_labels(dataset):
     #Filter out all digits except these two
     l1 = 0
     l2 = 1
-   
+
     if dataset.train:
-        idx_l1 = dataset.targets == l1
-        idx_l2 = dataset.targets == l2 
-        
+        idx_l1 = dataset.train_labels == l1
+        idx_l2 = dataset.train_labels == l2 
+
         idx = idx_l1 + idx_l2
-        dataset.targets = dataset.targets[idx]
-        dataset.data = dataset.data[idx]
+        dataset.train_labels = dataset.train_labels[idx]
+        dataset.train_data = dataset.train_data[idx]
     else:
         idx_l1 = dataset.test_labels == l1
         idx_l2 = dataset.test_labels == l2
 
         idx = idx_l1 + idx_l2
-        dataset.targets = dataset.targets[idx]
-        dataset.data = dataset.data[idx]
+        dataset.test_labels = dataset.test_labels[idx]
+        dataset.test_data = dataset.test_data[idx]
 
 def get_datasets(args):
     if args.dataset == 'mnist':
@@ -179,7 +178,8 @@ def main(args):
     train_dataset, test_dataset, num_train = get_datasets(args)
     train_dataloader = DataLoader(train_dataset, batch_size=args.batch_size, shuffle=True)
     test_dataloader = DataLoader(test_dataset, batch_size=args.batch_size, shuffle=True)
-    reg = 1/num_train 
+    reg = 100/num_train 
+    #reg = 0
 
     losses_gn = []
     losses_gn_sketch = []
@@ -272,7 +272,8 @@ def main(args):
     plt.title('Training loss')
     plt.xlabel('Seconds')
     plt.grid(True, which='both')
-    plt.legend(['Gauss-Newton', 'Gauss-Newton Sketch', 'Gauss-Newton Half-Sketch', 'SGD'])
+    #plt.legend(['Gauss-Newton', 'Gauss-Newton Sketch', 'Gauss-Newton Half-Sketch', 'SGD'])
+    plt.legend(['Gauss-Newton Sketch', 'Gauss-Newton Half-Sketch', 'SGD'])
     plt.show()
 
 def train_GN(model, dataloader, optimizer, all_losses):
@@ -292,18 +293,34 @@ def train_GN(model, dataloader, optimizer, all_losses):
        def closure():
            optimizer.zero_grad()
            pred = model(images)
-           loss = 0.5*F.mse_loss(pred.squeeze(), labels)
-           #loss = 0.5*F.cross_entropy(pred.squeeze(), labels)
+           #pred = torch.max(res, 1)[1].type(torch.FloatTensor)
+           #pred.requires_grad = True
+           #loss = 0.5*F.mse_loss(pred.squeeze(), labels)
+           loss = F.cross_entropy(pred, labels.type(torch.LongTensor))
            #print(pred.squeeze().shape, labels.shape)
-           err = pred - labels.unsqueeze(1) 
-           return loss, err, pred
+           
+           #need to create an alternative notion of residual in this case
+           #in the case of true location of the argmax in pred the cost should
+           #be the negative of the distance from the entry to 1 (negative b/c
+           #softmax leads to an underestimator. In the case of the non-argmax
+           #elements the residual should be just the entry itself (since
+           
+           label_mask = torch.zeros(pred.shape)
+           label_mask[np.arange(pred.shape[0]), labels.type(torch.LongTensor)]=1
+           #print(label_mask)
+           err = F.softmax(pred) - label_mask
+           #print(err)
+           #err = pred - labels.unsqueeze(1)
+           #print(err.shape)
+           return loss, err, F.softmax(pred)
        
        loss, pred = optimizer.step(closure)
        
        print(pred[:10].squeeze(), labels[:10])
        losses.append(loss.item())
        all_losses.append(loss.item())
-       acc = torch.sum((pred.squeeze(1)>0.5).float() == labels).float()/len(labels)
+       #acc = torch.sum((pred.squeeze(1)>0.5).float() == labels).float()/len(labels)
+       acc = torch.sum((torch.argmax(pred, 1)).float() == labels).float()/len(labels) 
        accuracy.append(acc.item())
        print('Iter: {}, Loss: {}, Accuracy: {}'.format(optimizer.grad_update,loss.item(),acc.item()))
 
@@ -321,14 +338,15 @@ def train_SGD(model, dataloader, optimizer, all_losses, num_iter_updates):
        
        optimizer.zero_grad()
        pred = model(images)
-       loss = 0.5*F.mse_loss(pred.squeeze(), labels)
-       #loss = 0.5*F.cross_entropy(pred.squeeze(), labels)
+       #loss = 0.5*F.mse_loss(pred.squeeze(), labels)
+       loss = F.cross_entropy(pred, labels.type(torch.LongTensor))
        loss.backward()
        optimizer.step()
 
        losses.append(loss.item())
        all_losses.append(loss.item())
-       acc = torch.sum((pred.squeeze(1)>0.5).float() == labels).float()/len(labels)
+       #acc = torch.sum((pred.squeeze(1)>0.5).float() == labels).float()/len(labels)
+       acc = torch.sum((torch.argmax(pred, 1)).float() == labels).float()/len(labels) 
        accuracy.append(acc.item())
        print('Iter: {}, Loss: {}, Accuracy: {}'.format(idx,loss.item(),acc.item()))
     
@@ -347,13 +365,14 @@ def test(model, dataloader):
         #images = images.view(-1, 28*28*1)
         labels = labels.float()
 
-        pred = model(images).squeeze()
-        #loss = 0.5*F.cross_entropy(pred.squeeze(), labels)
+        pred = model(images)
+        loss = F.cross_entropy(pred, labels.type(torch.LongTensor))
 
-        loss = 0.5*F.mse_loss(pred, labels)
+        #loss = 0.5*F.mse_loss(pred, labels)
         
         losses.append(loss.item())
-        acc = torch.sum((pred>0.5).float() == labels).float()/len(labels)
+        #acc = torch.sum((pred.squeeze(1)>0.5).float() == labels).float()/len(labels)
+        acc = torch.sum((torch.argmax(pred, 1)).float() == labels).float()/len(labels) 
         accuracy.append(acc.item())
 
     return np.mean(losses), np.mean(accuracy)

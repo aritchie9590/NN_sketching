@@ -4,6 +4,7 @@ import torch
 from functools import reduce
 import torch.nn as nn
 from torch.optim.optimizer import Optimizer
+import scipy
 
 """
 Compute Gauss-Newton vector product
@@ -14,11 +15,10 @@ Args:
 """
 def _make_ggnvp(err, params, w0, n, reg, idx):
     u = err.clone()
-
     grad_params = torch.autograd.grad(err, params, u, create_graph=True) #gradients
     grad = torch.nn.utils.parameters_to_vector(grad_params)
     grad = grad/n + reg*w0 #average gradients + regularize
-
+    #print(grad.shape)
     grad_sketch_params = torch.autograd.grad(err[idx], params, u[idx], create_graph=True) #sketched gradients; if no sketching, then this is equivalent to grad_params
     
     def ggnvp(w):
@@ -32,6 +32,7 @@ def _make_ggnvp(err, params, w0, n, reg, idx):
             offset += numel
 
             Jv, = torch.autograd.grad(uJ, u, v, create_graph=True) #Jacobian vector-product
+            #print(Jv.shape)
             temp, = torch.autograd.grad(Jv, v, Jv, create_graph=True) #Jacobian.T @ Jacobian vector-product
 
             #Accumulate JtJv for all parameters into this list
@@ -59,6 +60,7 @@ def _conjugate_gradient(ggnvp, grad, max_iters):
     w0.requires_grad = True 
 
     w = w0.clone() #not necessary, but in-place operations can't be done on leaf variables
+    
     r = grad - ggnvp(w)
     p = r
 
@@ -83,7 +85,14 @@ def _conjugate_gradient(ggnvp, grad, max_iters):
 
         rs_old = rs_new
         n_iter += 1
-
+    """
+    subprob = lambda v: grad.T @ v + 0.5 * np.sum(np.power(ggnvp(v)[1], 2))
+    subgrad = lambda v: grad + vjp(jvp(v)[1])
+    res = minimize(subprob, w, jac=subgrad, method="BFGS", \
+                   options={'gtol': 1e-3, 'norm': 2.0, 'eps': 0.1, \
+                            'maxiter': None, 'disp': False}
+                  )
+    """
     return w, cost_log
 
 class GN_Solver(Optimizer):
@@ -213,7 +222,8 @@ class GN_Solver(Optimizer):
                     print('Maximum backtracking reached, accuracy not guaranteed')
                     break
         else: #use a decreasing step-size
-            t = 1/self.grad_update
+            t = 1/self.grad_update**2
+            print('step size: {}'.format(t))
 
         #Update the model parameters
         self._add_grad(-t, dw)
