@@ -51,7 +51,10 @@ def _conjugate_gradient(ggnvp, grad, max_iters):
     #cost = lambda v: 0.5*v @ (ggnvp(v)) - grad@v
 
     cost_log = torch.zeros(max_iters)
-    device = grad.get_device()
+    try:
+        device = grad.get_device()
+    except:
+        device = 'cpu'
     w0 = torch.zeros(grad.shape).to(device)
     w0.requires_grad = True 
 

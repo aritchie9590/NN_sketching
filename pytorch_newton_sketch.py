@@ -35,7 +35,6 @@ args = parser.parse_args()
 
 torch.manual_seed(123)
 np.random.seed(123)
-
 device = 'cuda' if args.cuda else 'cpu'
 
 #simple feed-forward neural network
@@ -128,7 +127,7 @@ def main(args):
     train_dataset, test_dataset, num_train = get_datasets(args)
     train_dataloader = DataLoader(train_dataset, batch_size=args.batch_size, shuffle=True)
     test_dataloader = DataLoader(test_dataset, batch_size=args.batch_size, shuffle=True)
-    reg = 1/num_train 
+    reg = 10/num_train 
 
     losses_gn = []
     losses_gn_sketch = []
