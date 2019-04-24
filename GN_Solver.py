@@ -5,6 +5,7 @@ from functools import reduce
 import torch.nn as nn
 from torch.optim.optimizer import Optimizer
 import scipy
+import numpy as np
 
 """
 Compute Gauss-Newton vector product
@@ -76,7 +77,7 @@ def _conjugate_gradient(ggnvp, grad, max_iters):
 
         #cost_log[n_iter] = cost(w)
 
-        if torch.sqrt(rs_new) < 1e-10:
+        if torch.sqrt(rs_new) < 1e-3:
             break
 
         #update direction
@@ -222,7 +223,9 @@ class GN_Solver(Optimizer):
                     print('Maximum backtracking reached, accuracy not guaranteed')
                     break
         else: #use a decreasing step-size
-            t = 1/self.grad_update**2
+            #t = np.maximum(1/self.grad_update, 0.2)
+            #t = 1
+            t = 1/self.grad_update
             print('step size: {}'.format(t))
 
         #Update the model parameters
