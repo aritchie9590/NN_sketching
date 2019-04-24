@@ -14,12 +14,13 @@ from torch.utils.data import DataLoader
 import matplotlib.pyplot as plt
 
 from GN_Solver import GN_Solver
+from CT_Dataset import CT_Dataset
 
 parser = argparse.ArgumentParser()
 
 #settings
 parser.add_argument('--dataset', default='mnist', type=str, help='dataset(s) to use')
-default_datasets = ['mnist', 'cifar10']
+default_datasets = ['mnist', 'cifar10', 'ct']
 parser.add_argument('--two_layer', action='store_true', help='add parameter to use two-layer architecture instead of single-layer')
 parser.add_argument('--max_iter', default=80, type=int, help='max num of iterations to train on')
 parser.add_argument('--batch_size', default=60000, type=int, help='mini-batch size') 
@@ -36,6 +37,7 @@ args = parser.parse_args()
 
 torch.manual_seed(0)
 np.random.seed(0)
+device = 'cuda' if args.cuda else 'cpu'
 
 #simple feed-forward neural network
 class Model(nn.Module):
@@ -156,6 +158,8 @@ def get_datasets(args):
         download=True, transform=transforms.ToTensor())
         test_dataset = datasets.MNIST(root='./data/', train=False,
         download=True, transform=transforms.ToTensor())
+
+        num_train = len(train_dataset.train_labels)
     elif args.dataset == 'cifar10':
         
         train_dataset = datasets.CIFAR10(root='./data',
@@ -164,22 +168,30 @@ def get_datasets(args):
         test_dataset = datasets.CIFAR10(root='./data',
         train=False,download=True, transform=transforms.ToTensor())
 
+        train_dataloader = DataLoader(train_dataset, batch_size=args.batch_size, shuffle=True)
+        test_dataloader = DataLoader(test_dataset, batch_size=args.batch_size, shuffle=True)
+
+        num_train = len(train_dataset.train_labels)
+    elif args.dataset == 'ct':
+        train_dataset = CT_Dataset('./data/slice_localization_data.csv', train=True)
+        test_dataset = CT_Dataset('./data/slice_localization_data.csv', train=False)
+
+        num_train = len(train_dataset)
     else:
         sys.exit('dataset {} unknown. Select from {}'.format(args.dataset, default_datasets))
 
     
     #filter_class_labels(train_dataset)
     #filter_class_labels(test_dataset)
-    num_train = len(train_dataset.train_labels)
+    train_dataloader = DataLoader(train_dataset, batch_size=args.batch_size, shuffle=True)
+    test_dataloader = DataLoader(test_dataset, batch_size=args.batch_size, shuffle=True)
 
-    return train_dataset, test_dataset, num_train
+    return train_dataloader, test_dataloader, num_train
 
 def main(args):
     
     #import pdb; pdb.set_trace()
     train_dataset, test_dataset, num_train = get_datasets(args)
-    train_dataloader = DataLoader(train_dataset, batch_size=args.batch_size, shuffle=True)
-    test_dataloader = DataLoader(test_dataset, batch_size=args.batch_size, shuffle=True)
     reg = 100/num_train 
     #reg = 0
 
@@ -210,9 +222,9 @@ def main(args):
     
     #Train using Gauss-Newton Half-sketch
     print('Training using Gauss-Newton Half-Sketch Solver')
-    model = Model(input_size=784, two_layer=args.two_layer) #init model
-    #model = models.vgg11_bn(pretrained=True)
-    #model = VGG()
+    model = Model(input_size=784, two_layer=args.two_layer).to(device) #init model
+    #model = models.vgg11_bn(pretrained=True).to(device)
+    #model = VGG().to(device)
     optimizer = GN_Solver(model.parameters(), lr=1.0, reg=reg, backtrack=0,
     max_iter=100)
     train_dataloader = DataLoader(train_dataset, batch_size=args.sketch_size, shuffle=True)
@@ -231,9 +243,9 @@ def main(args):
     #Train using Gauss-Newton Sketch 
     #The sketch will be just a sample of the data, so we'll opt to use a mini-batch of sketch size
     train_dataloader = DataLoader(train_dataset, batch_size=args.sketch_size, shuffle=True)
-    model = Model(input_size=784, two_layer=args.two_layer) #init model
-    #model = models.vgg11_bn(pretrained=True)
-    #model = VGG()
+    model = Model(input_size=784, two_layer=args.two_layer).to(device) #init model
+    #model = models.vgg11_bn(pretrained=True).to(device)
+    #model = VGG().to(device)
     #print(sum(p.numel() for p in model.parameters() if p.requires_grad))
     optimizer = GN_Solver(model.parameters(), lr=1.0, reg=reg, backtrack=0,
     max_iter=100)
@@ -248,9 +260,9 @@ def main(args):
     
     #Train using SGD
     print('Training using SGD')
-    model = Model(input_size=784, two_layer=args.two_layer) #re-init model 
-    #model = models.vgg11_bn(pretrained=True)
-    #model = VGG()
+    model = Model(input_size=784, two_layer=args.two_layer).to(device) #re-init model 
+    #model = models.vgg11_bn(pretrained=True).to(device)
+    #model = VGG().to(device)
     optimizer = torch.optim.SGD(model.parameters(), lr=0.1, weight_decay=reg) 
     train_dataloader = DataLoader(train_dataset, batch_size=args.sketch_size, shuffle=True)
     time_start = time.time()
@@ -264,11 +276,11 @@ def main(args):
     loss, accuracy = test(model, test_dataloader)
     print('Test Loss: {}, Accuracy: {}'.format(loss, accuracy))
     
-    #Train using SGD
+    #Train using ADAM
     print('Training using ADAM')
-    model = Model(input_size=784, two_layer=args.two_layer) #re-init model 
-    #model = models.vgg11_bn(pretrained=True)
-    #model = VGG()
+    model = Model(input_size=784, two_layer=args.two_layer).to(device) #re-init model 
+    #model = models.vgg11_bn(pretrained=True).to(device)
+    #model = VGG().to(device)
     optimizer = torch.optim.Adam(model.parameters(), lr=0.001, weight_decay=reg) 
     train_dataloader = DataLoader(train_dataset, batch_size=args.sketch_size, shuffle=True)
     time_start = time.time()
@@ -312,6 +324,8 @@ def train_GN(model, dataloader, optimizer, all_losses):
        images = images.view(-1, 1, 28, 28) #reshape image to vector
        labels = labels.float()
 
+       images = images.to(device)
+       labels = labels.to(device)
        #Custom function b/c cost may need to be evaluated several times for backtracking
        def closure():
            optimizer.zero_grad()
@@ -319,7 +333,7 @@ def train_GN(model, dataloader, optimizer, all_losses):
            #pred = torch.max(res, 1)[1].type(torch.FloatTensor)
            #pred.requires_grad = True
            #loss = 0.5*F.mse_loss(pred.squeeze(), labels)
-           loss = F.cross_entropy(pred, labels.type(torch.LongTensor))
+           loss = F.cross_entropy(pred, labels.long())
            #print(pred.squeeze().shape, labels.shape)
            
            #need to create an alternative notion of residual in this case
@@ -328,8 +342,8 @@ def train_GN(model, dataloader, optimizer, all_losses):
            #softmax leads to an underestimator. In the case of the non-argmax
            #elements the residual should be just the entry itself (since
            
-           label_mask = torch.zeros(pred.shape)
-           label_mask[np.arange(pred.shape[0]), labels.type(torch.LongTensor)]=1
+           label_mask = torch.zeros(pred.shape).to(device)
+           label_mask[np.arange(pred.shape[0]), labels.long()]=1
            #print(label_mask)
            err = F.softmax(pred) - label_mask
            #print(err)
@@ -358,11 +372,14 @@ def train_SGD(model, dataloader, optimizer, all_losses, num_iter_updates):
        #images = images.view(-1, 28*28*1) #reshape image to vector
        images = images.view(-1, 1, 28, 28) #reshape image to vector
        labels = labels.float()
+
+       images = images.to(device)
+       labels = labels.to(device)
        
        optimizer.zero_grad()
        pred = model(images)
        #loss = 0.5*F.mse_loss(pred.squeeze(), labels)
-       loss = F.cross_entropy(pred, labels.type(torch.LongTensor))
+       loss = F.cross_entropy(pred, labels.long())
        loss.backward()
        optimizer.step()
 
@@ -371,7 +388,7 @@ def train_SGD(model, dataloader, optimizer, all_losses, num_iter_updates):
        #acc = torch.sum((pred.squeeze(1)>0.5).float() == labels).float()/len(labels)
        acc = torch.sum((torch.argmax(pred, 1)).float() == labels).float()/len(labels) 
        accuracy.append(acc.item())
-       print('Iter: {}, Loss: {}, Accuracy: {}'.format(idx,loss.item(),acc.item()))
+       #print('Iter: {}, Loss: {}, Accuracy: {}'.format(idx,loss.item(),acc.item()))
     
    num_iter_updates[0] = num_iter_updates[0] + 1
    return np.mean(losses), np.mean(accuracy)
@@ -387,6 +404,9 @@ def test(model, dataloader):
         images, labels = data
         #images = images.view(-1, 28*28*1)
         labels = labels.float()
+        
+        images = images.to(device)
+        labels = labels.to(device)
 
         pred = model(images)
         loss = F.cross_entropy(pred, labels.type(torch.LongTensor))

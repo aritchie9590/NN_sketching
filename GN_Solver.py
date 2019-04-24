@@ -47,7 +47,7 @@ def _make_ggnvp(err, params, w0, n, reg, idx):
     return grad, ggnvp 
 
 #solve for optimal step direction using the Conjugate Gradient Descent method
-def _conjugate_gradient(ggnvp, grad, max_iters):
+def _conjugate_gradient(ggnvp, grad, max_iters, tolerance):
     n_iter = 0
 
     #cost = lambda v: 0.5*v @ (ggnvp(v)) - grad@v
@@ -77,7 +77,7 @@ def _conjugate_gradient(ggnvp, grad, max_iters):
 
         #cost_log[n_iter] = cost(w)
 
-        if torch.sqrt(rs_new) < 1e-3:
+        if torch.sqrt(rs_new) < tolerance:
             break
 
         #update direction
@@ -110,12 +110,12 @@ class GN_Solver(Optimizer):
         sketch_size (int, optional): size of randomized sketching sampling matrix i.e. Number of elements to sample
 
     """
-    def __init__(self, params, lr=1, max_iter=20, reg=0.0, backtrack=50, backtrack_param = (0.2, 0.5), tolerance=1e-8, sketch_size=None):
+    def __init__(self, params, lr=1, max_iter=20, reg=0.0, backtrack=50, backtrack_param = (0.2, 0.5), tolerance=1e-3, sketch_size=None):
 
         if backtrack < 0:
             raise ValueError('Invalid backtrack amount: {}'.format(backtrack))
 
-        defaults = dict(lr=lr, max_iter=max_iter, reg=reg, backtrack=backtrack, bt_alpha=backtrack_param[0], bt_beta=backtrack_param[1], sketch_size=sketch_size)
+        defaults = dict(lr=lr, max_iter=max_iter, reg=reg, backtrack=backtrack, bt_alpha=backtrack_param[0], bt_beta=backtrack_param[1], sketch_size=sketch_size, tolerance=tolerance)
 
         super(GN_Solver, self).__init__(params, defaults)
 
@@ -187,6 +187,7 @@ class GN_Solver(Optimizer):
         bt_alpha = group['bt_alpha']
         bt_beta = group['bt_beta']
         sketch_size = group['sketch_size']
+        tolerance = group['tolerance']
 
         #import pdb; pdb.set_trace()
         n = err.shape[0] #batch size
@@ -202,7 +203,7 @@ class GN_Solver(Optimizer):
         #Compute Gauss-Newton vector product 
         grad, ggnvp = _make_ggnvp(err,self._params,w0,n,reg,idx) #return gradient in vector form + ggnvp function
         #Solve for the Conjugate Gradient Direction
-        dw, cost_log = _conjugate_gradient(ggnvp, grad,max_iter)
+        dw, cost_log = _conjugate_gradient(ggnvp, grad, max_iter, tolerance)
 
         #Perform backtracking line search
         val = loss + 0.5 * reg * torch.norm(w0)**2
