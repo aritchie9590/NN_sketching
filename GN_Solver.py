@@ -224,9 +224,9 @@ class GN_Solver(Optimizer):
                     print('Maximum backtracking reached, accuracy not guaranteed')
                     break
         else: #use a decreasing step-size
-            #t = np.maximum(1/self.grad_update, 0.2)
-            #t = 1
-            t = 1/self.grad_update
+            t = 0.1/self.grad_update
+            #t = 0.1
+            #t = 0.1/np.maximum(1, self.grad_update-10)
             print('step size: {}'.format(t))
 
         #Update the model parameters
