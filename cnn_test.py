@@ -189,15 +189,17 @@ def get_datasets(args):
     
     #filter_class_labels(train_dataset)
     #filter_class_labels(test_dataset)
-    train_dataloader = DataLoader(train_dataset, batch_size=args.batch_size, shuffle=True)
-    test_dataloader = DataLoader(test_dataset, batch_size=args.batch_size, shuffle=True)
+    #train_dataloader = DataLoader(train_dataset, batch_size=args.batch_size, shuffle=True)
+    #test_dataloader = DataLoader(test_dataset, batch_size=args.batch_size, shuffle=True)
 
-    return train_dataloader, test_dataloader, num_train
+    return train_dataset, test_dataset, num_train
 
 def main(args):
     
     #import pdb; pdb.set_trace()
     train_dataset, test_dataset, num_train = get_datasets(args)
+    train_dataloader = DataLoader(train_dataset, batch_size=args.batch_size, shuffle=True)
+    test_dataloader = DataLoader(test_dataset, batch_size=args.batch_size, shuffle=True)
     reg = 100/num_train 
     #reg = 0
 
