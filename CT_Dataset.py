@@ -21,10 +21,11 @@ class CT_Dataset(Dataset):
 
         with open(csv_file, 'r') as f:
             reader = csv.reader(f)
+            next(reader) #skip header row
             for row in reader:
                 patient_id = row[0]
-                feature_vector = row[1:384]
-                target = row[-1]
+                feature_vector = [float(i) for i in row[1:384]]
+                target = float(row[-1])
 
                 data_point = {'feature':feature_vector, 'target':target}                
                 self.data_points.append(data_point)
@@ -49,4 +50,6 @@ class CT_Dataset(Dataset):
         feature = datapoint['feature']
         target = datapoint['target']
 
-        return self.loader(feature), self.loader(target)
+        feature = torch.Tensor(feature)
+        target = torch.Tensor([target])
+        return feature, target
