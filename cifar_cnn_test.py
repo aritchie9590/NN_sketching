@@ -18,13 +18,13 @@ from GN_Solver import GN_Solver
 parser = argparse.ArgumentParser()
 
 #settings
-parser.add_argument('--dataset', default='mnist', type=str, help='dataset(s) to use')
+parser.add_argument('--dataset', default='cifar10', type=str, help='dataset(s) to use')
 default_datasets = ['mnist', 'cifar10']
 parser.add_argument('--two_layer', action='store_true', help='add parameter to use two-layer architecture instead of single-layer')
 parser.add_argument('--max_iter', default=80, type=int, help='max num of iterations to train on')
 parser.add_argument('--batch_size', default=60000, type=int, help='mini-batch size') 
 
-parser.add_argument('--sketch_size', default=700, type=int, help='sketch size for sketching algorithms')
+parser.add_argument('--sketch_size', default=1000, type=int, help='sketch size for sketching algorithms')
 #parser.add_argument('--reg', default=0.0001, type=float, help='regularizer')
 
 parser.add_argument('--cuda', action='store_true', help='use gpu')
@@ -79,18 +79,19 @@ class VGG(nn.Module):
             # Stage 1
             # TODO: convolutional layer, input channels 3, output channels 8, filter size 3
             # TODO: max-pooling layer, size 2
-            nn.Conv2d(1, 16, kernel_size=3, padding=1),#, stride=1,padding=1,bias=True),
-            nn.MaxPool2d(2)
-            )
+            nn.Conv2d(3, 8, kernel_size=3, padding=1),#, stride=1,padding=1,bias=True),
+            nn.MaxPool2d(2),
             
-        """ 
-        # Stage 2
-        # TODO: convolutional layer, input channels 8, output channels 16, filter size 3
-        # TODO: max-pooling layer, size 2
-        
-        nn.Conv2d(2, 4, kernel_size=3, padding=1),
-        nn.MaxPool2d(2),
-
+            
+         
+            # Stage 2
+            # TODO: convolutional layer, input channels 8, output channels 16, filter size 3
+            # TODO: max-pooling layer, size 2
+            
+            nn.Conv2d(8, 16, kernel_size=3, padding=1),
+            nn.MaxPool2d(2)
+        )
+        """
         # Stage 3
         # TODO: convolutional layer, input channels 16, output channels 32, filter size 3
         # TODO: convolutional layer, input channels 32, output channels 32, filter size 3
@@ -114,7 +115,7 @@ class VGG(nn.Module):
         self.fc = nn.Sequential(
             # TODO: fully-connected layer (64->64)
             nn.ReLU(),
-            nn.Linear(16*14*14,16),
+            nn.Linear(16*7*7,16),
             nn.ReLU(),
             # TODO: fully-connected layer (64->10)
             nn.Linear(16, 10)
@@ -125,7 +126,7 @@ class VGG(nn.Module):
 
     def forward(self, x):
         x = self.conv(x)
-        x = x.view(-1, 16*14*14)
+        x = x.view(-1, 16*7*7)
         x = self.fc(x)
         return x
 
@@ -217,7 +218,6 @@ def main(args):
 
     print('-'*30)
     """
-    
     #Train using Gauss-Newton Half-sketch
     print('Training using Gauss-Newton Half-Sketch Solver')
     #model = Model(input_size=784, two_layer=args.two_layer) #init model
@@ -257,7 +257,7 @@ def main(args):
     print('Trained in {0:.3f}s'.format(t_solve_gn_sketch))
     loss, accuracy = test(model, test_dataloader)
     print('Test Loss: {}, Accuracy: {}'.format(loss, accuracy))
-    
+
     #Train using SGD
     print('Training using SGD')
     #model = Model(input_size=784, two_layer=args.two_layer) #re-init model 
@@ -277,6 +277,7 @@ def main(args):
     loss, accuracy = test(model, test_dataloader)
     print('Test Loss: {}, Accuracy: {}'.format(loss, accuracy))
     
+
     #Train using SGD
     print('Training using ADAM')
     #model = Model(input_size=784, two_layer=args.two_layer) #re-init model 
@@ -334,7 +335,6 @@ def train_GN(model, dataloader, valLoader, optimizer, all_losses, val_losses):
            break
 
        images, labels = data
-       images = images.view(-1, 1, 28, 28) #reshape image to vector
        labels = labels.float()
         
        it = iter(valLoader)
@@ -389,7 +389,6 @@ num_iter_updates, val_losses):
    for idx, data in enumerate(dataloader):
        images, labels = data
        #images = images.view(-1, 28*28*1) #reshape image to vector
-       images = images.view(-1, 1, 28, 28) #reshape image to vector
        labels = labels.float()
        
        optimizer.zero_grad()
