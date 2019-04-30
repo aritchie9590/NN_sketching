@@ -12,12 +12,13 @@ Optional to run on GPU with 'cuda' parameter
 Recommended to run on CPU only, 12 GB GPU runs out of memory
 - `sketched_GN_networks.py` : Runs the mnist binary regression experiment using the python implementation in autograd (not PyTorch). Use default settings to run a 2 fc layer network on MNIST for 2 digit (0, 1) classification. 
 
-### Other files:
+### Other important files:
 - `GN_solver.py` contains the python implementation of the Gauss-Newton Sketch solver
 
-# NN_sketching
 
-### Papers
+
+
+### Paper Sources
 
 #### Sketching
 1. [Iterative Hessian Sketch: Fast and Accurate SolutionApproximation for Constrained Least-Squares](http://www.jmlr.org/papers/volume17/14-460/14-460.pdf) M. Pilanci, M. J. Wainwright, JMLR 2016
