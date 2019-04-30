@@ -1,3 +1,16 @@
+# Instructions - How to run code:
+
+### Datasets: 
+- MNIST : Download directly through PyTorch
+- CIFAR : Download directly through PyTorch
+- CT Dataset: https://archive.ics.uci.edu/ml/datasets/Relative+location+of+CT+slices+on+axial+axis
+
+### Files to run:
+- `ct_test.py` : Use default settings to run a multi-layered feed-forward network on the CT dataset (regression). The optimization is performed using GN, GN Half-sketch, GN Sketch, SGD, and ADAM. 
+Optional to run on GPU with 'cuda' parameter
+- `cnn_test.py` : Use default settings to run a convolution + 2 fc layer network on MNIST for 10 digit classification. The optimization is performed using GN, GN Half-sketch, GN Sketch, SGD, and ADAM.
+Recommended to run on CPU only, 12 GB GPU runs out of memory
+
 # NN_sketching
 
 ### Papers
