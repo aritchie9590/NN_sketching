@@ -10,10 +10,10 @@
 Optional to run on GPU with 'cuda' parameter
 - `mnist_cnn_test.py` : Use default settings to run a convolution + 2 fc layer network on MNIST for 10 digit classification. The optimization is performed using GN, GN Half-sketch, GN Sketch, SGD, and ADAM.
 Recommended to run on CPU only, 12 GB GPU runs out of memory
-- 'sketched_GN_networks.py' : Runs the mnist binary regression experiment using the python implementation in autograd (not PyTorch). Use default settings to run a 2 fc layer network on MNIST for 2 digit (0, 1) classification. 
+- `sketched_GN_networks.py` : Runs the mnist binary regression experiment using the python implementation in autograd (not PyTorch). Use default settings to run a 2 fc layer network on MNIST for 2 digit (0, 1) classification. 
 
 ### Other files:
-- GN_solver.py contains the python implementation of the Gauss-Newton Sketch solver
+- `GN_solver.py` contains the python implementation of the Gauss-Newton Sketch solver
 
 # NN_sketching
 
