@@ -1,3 +1,8 @@
+Authors:
+Kyle Gilman,
+Nathan Louis,
+Alex Ritchie
+
 # Instructions - How to run code:
 
 ### Datasets: 
@@ -15,7 +20,11 @@ Recommended to run on CPU only, 12 GB GPU runs out of memory
 ### Other important files:
 - `GN_solver.py` contains the python implementation of the Gauss-Newton Sketch solver
 
-
+### Requirements
+- Python3
+- PyTorch v1.0.1
+- Torchvision v0.2.1
+- HIPS Autograd v1.2
 
 
 ### Paper Sources
