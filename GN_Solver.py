@@ -102,6 +102,7 @@ class GN_Solver(Optimizer):
     Args:
         params (iterable): iterable of parameters to optimize or dicts defining parameter groups
         lr (float): initial guess for learning rate (step size)
+        decay_lr: Use a decreasing step-size based on iteration count
         max_iter (int, optional): maximum number of iterations before terminating update on optimization step
         reg (float, optional): regularizer/penalty on weights 
         backtrack (int, optional):
@@ -110,12 +111,12 @@ class GN_Solver(Optimizer):
         sketch_size (int, optional): size of randomized sketching sampling matrix i.e. Number of elements to sample
 
     """
-    def __init__(self, params, lr=1, max_iter=20, reg=0.0, backtrack=50, backtrack_param = (0.2, 0.5), tolerance=1e-3, sketch_size=None):
+    def __init__(self, params, lr=0.01, decay_lr=False, max_iter=20, reg=0.0, backtrack=50, backtrack_param = (0.2, 0.5), tolerance=1e-3, sketch_size=None):
 
         if backtrack < 0:
             raise ValueError('Invalid backtrack amount: {}'.format(backtrack))
 
-        defaults = dict(lr=lr, max_iter=max_iter, reg=reg, backtrack=backtrack, bt_alpha=backtrack_param[0], bt_beta=backtrack_param[1], sketch_size=sketch_size, tolerance=tolerance)
+        defaults = dict(lr=lr, decay_lr=decay_lr, max_iter=max_iter, reg=reg, backtrack=backtrack, bt_alpha=backtrack_param[0], bt_beta=backtrack_param[1], sketch_size=sketch_size, tolerance=tolerance)
 
         super(GN_Solver, self).__init__(params, defaults)
 
@@ -181,6 +182,7 @@ class GN_Solver(Optimizer):
 
         group = self.param_groups[0]
         lr = group['lr']
+        decay_lr = group['decay_lr']
         max_iter = group['max_iter']
         reg = group['reg']
         backtrack = group['backtrack']
@@ -223,11 +225,12 @@ class GN_Solver(Optimizer):
                 if bts > backtrack:
                     print('Maximum backtracking reached, accuracy not guaranteed')
                     break
-        else: #use a decreasing step-size
-            #t = 0.7/self.grad_update
-            t = 0.1
-            #t = 0.1/np.maximum(1, self.grad_update-10)
-            print('step size: {}'.format(t))
+        elif decay_lr: #decay lr
+            t = lr/np.maximum(1, self.grad_update-10)
+        else: #use lr step-size
+            t = lr
+
+        print('step size: {}'.format(t))
 
         #Update the model parameters
         self._add_grad(-t, dw)
